@@ -6,6 +6,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/woliveiras/bookaneer/internal/testutil"
@@ -389,12 +390,12 @@ func TestTestIndexer_Success(t *testing.T) {
 
 // openAndCloseSQLiteDB opens an in-memory SQLite database and immediately closes
 // it so that any subsequent operation on it returns an error.
-func openAndCloseSQLiteDB(t *testing.T) *sql.DB {
+func openAndCloseSQLiteDB(t *testing.T) *sqlx.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
-	return db
+	return sqlx.NewDb(db, "sqlite")
 }
 
 // TestListIndexers_DBError covers the db.QueryContext error path in ListIndexers.

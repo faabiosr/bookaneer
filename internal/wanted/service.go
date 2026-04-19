@@ -4,11 +4,11 @@ package wanted
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log/slog"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/woliveiras/bookaneer/internal/core/book"
 	corelibrary "github.com/woliveiras/bookaneer/internal/core/library"
 	"github.com/woliveiras/bookaneer/internal/core/naming"
@@ -20,7 +20,7 @@ import (
 
 // Service handles searching and grabbing wanted books.
 type Service struct {
-	db              *sql.DB
+	db              *sqlx.DB
 	bookService     *book.Service
 	libraryService  *library.Aggregator
 	searchService   *search.Service
@@ -32,7 +32,7 @@ type Service struct {
 
 // New creates a new Wanted service.
 func New(
-	db *sql.DB,
+	db *sqlx.DB,
 	bookService *book.Service,
 	libraryService *library.Aggregator,
 	searchService *search.Service,
@@ -76,10 +76,10 @@ func (s *Service) SearchAndGrab(ctx context.Context, bookID int64) (*GrabResult,
 
 	// Check if there's already an active download for this book
 	var activeCount int
-	err = s.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM download_queue 
+	err = s.db.GetContext(ctx, &activeCount, `
+		SELECT COUNT(*) FROM download_queue
 		WHERE book_id = ? AND status IN ('queued', 'downloading', 'paused', 'importing')
-	`, bookID).Scan(&activeCount)
+	`, bookID)
 	if err != nil {
 		slog.Warn("Failed to check for active downloads", "error", err)
 	} else if activeCount > 0 {
@@ -118,11 +118,19 @@ func (s *Service) SearchAndGrab(ctx context.Context, bookID int64) (*GrabResult,
 
 // GetWantedBooks returns all monitored books without files.
 func (s *Service) GetWantedBooks(ctx context.Context) ([]book.Book, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT b.id, b.author_id, b.title, COALESCE(b.sort_title,''), COALESCE(b.foreign_id,''), COALESCE(b.isbn,''), COALESCE(b.isbn13,''),
-		       COALESCE(b.release_date,''), COALESCE(b.overview,''), COALESCE(b.image_url,''), b.page_count, b.monitored,
+	var books []book.Book
+	err := s.db.SelectContext(ctx, &books, `
+		SELECT b.id, b.author_id, b.title,
+		       COALESCE(b.sort_title,'')   as sort_title,
+		       COALESCE(b.foreign_id,'')   as foreign_id,
+		       COALESCE(b.isbn,'')         as isbn,
+		       COALESCE(b.isbn13,'')       as isbn13,
+		       COALESCE(b.release_date,'') as release_date,
+		       COALESCE(b.overview,'')     as overview,
+		       COALESCE(b.image_url,'')    as image_url,
+		       b.page_count, b.monitored,
 		       b.added_at, b.updated_at,
-		       COALESCE(a.name,'') as author_name,
+		       COALESCE(a.name,'') as name,
 		       EXISTS(SELECT 1 FROM book_files bf WHERE bf.book_id = b.id) as has_file
 		FROM books b
 		LEFT JOIN authors a ON a.id = b.author_id
@@ -130,28 +138,7 @@ func (s *Service) GetWantedBooks(ctx context.Context) ([]book.Book, error) {
 		  AND NOT EXISTS (SELECT 1 FROM book_files bf WHERE bf.book_id = b.id)
 		ORDER BY b.added_at DESC
 	`)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-
-	var books []book.Book
-	for rows.Next() {
-		var b book.Book
-		var monitored, hasFile int
-		if err := rows.Scan(
-			&b.ID, &b.AuthorID, &b.Title, &b.SortTitle, &b.ForeignID, &b.ISBN, &b.ISBN13,
-			&b.ReleaseDate, &b.Overview, &b.ImageURL, &b.PageCount, &monitored,
-			&b.AddedAt, &b.UpdatedAt, &b.AuthorName, &hasFile,
-		); err != nil {
-			return nil, err
-		}
-		b.Monitored = monitored == 1
-		b.HasFile = hasFile == 1
-		books = append(books, b)
-	}
-
-	return books, rows.Err()
+	return books, err
 }
 
 // SearchAllWanted searches for all wanted books.

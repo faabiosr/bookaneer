@@ -10,8 +10,8 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// Open opens a SQLite database with optimal settings for a web application.
-func Open(path string) (*sql.DB, error) {
+// Open opens a SQLite database with optimal settings and returns a sqlx-wrapped connection.
+func Open(path string) (*sqlx.DB, error) {
 	dsn := fmt.Sprintf(
 		"file:%s?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL",
 		path,
@@ -37,23 +37,18 @@ func Open(path string) (*sql.DB, error) {
 		return nil, fmt.Errorf("enable foreign keys: %w", err)
 	}
 
-	return db, nil
-}
-
-// OpenX wraps an existing *sql.DB with sqlx, using the sqlite driver name.
-func OpenX(db *sql.DB) *sqlx.DB {
-	return sqlx.NewDb(db, "sqlite")
+	return sqlx.NewDb(db, "sqlite"), nil
 }
 
 // Migrate runs all pending database migrations.
-func Migrate(db *sql.DB, migrationsFS fs.FS, dir string) error {
+func Migrate(db *sqlx.DB, migrationsFS fs.FS, dir string) error {
 	goose.SetBaseFS(migrationsFS)
 
 	if err := goose.SetDialect("sqlite3"); err != nil {
 		return fmt.Errorf("set dialect: %w", err)
 	}
 
-	if err := goose.Up(db, dir); err != nil {
+	if err := goose.Up(db.DB, dir); err != nil {
 		return fmt.Errorf("run migrations: %w", err)
 	}
 

@@ -56,8 +56,8 @@ type ListAuthorsFilter struct {
 
 // AuthorStats holds statistics for an author.
 type AuthorStats struct {
-	BookCount      int `json:"bookCount"`
-	BookFileCount  int `json:"bookFileCount"`
-	MissingBooks   int `json:"missingBooks"`
-	TotalSizeBytes int `json:"totalSizeBytes"`
+	BookCount      int `json:"bookCount"      db:"book_count"`
+	BookFileCount  int `json:"bookFileCount"  db:"file_count"`
+	MissingBooks   int `json:"missingBooks"   db:"missing"`
+	TotalSizeBytes int `json:"totalSizeBytes" db:"total_size"`
 }

@@ -73,27 +73,27 @@ const (
 
 // ClientConfig holds the configuration for a download client.
 type ClientConfig struct {
-	ID                   int64    `json:"id"`
-	Name                 string   `json:"name"`
-	Type                 string   `json:"type"`
-	Host                 string   `json:"host"`
-	Port                 int      `json:"port"`
-	UseTLS               bool     `json:"useTls"`
-	Username             string   `json:"username,omitempty"`
-	Password             string   `json:"password,omitempty"`
-	APIKey               string   `json:"apiKey,omitempty"`
-	Category             string   `json:"category,omitempty"`
-	RecentPriority       Priority `json:"recentPriority"`
-	OlderPriority        Priority `json:"olderPriority"`
-	RemoveCompletedAfter int      `json:"removeCompletedAfter"`
-	Enabled              bool     `json:"enabled"`
-	Priority             int      `json:"priority"`
-	NzbFolder            string   `json:"nzbFolder,omitempty"`
-	TorrentFolder        string   `json:"torrentFolder,omitempty"`
-	WatchFolder          string   `json:"watchFolder,omitempty"`
-	DownloadDir          string   `json:"downloadDir,omitempty"` // For direct downloads
-	CreatedAt            string   `json:"createdAt"`
-	UpdatedAt            string   `json:"updatedAt"`
+	ID                   int64    `json:"id"                    db:"id"`
+	Name                 string   `json:"name"                  db:"name"`
+	Type                 string   `json:"type"                  db:"type"`
+	Host                 string   `json:"host"                  db:"host"`
+	Port                 int      `json:"port"                  db:"port"`
+	UseTLS               bool     `json:"useTls"                db:"use_tls"`
+	Username             string   `json:"username,omitempty"    db:"username"`
+	Password             string   `json:"password,omitempty"    db:"password"`
+	APIKey               string   `json:"apiKey,omitempty"      db:"api_key"`
+	Category             string   `json:"category,omitempty"    db:"category"`
+	RecentPriority       Priority `json:"recentPriority"        db:"recent_priority"`
+	OlderPriority        Priority `json:"olderPriority"         db:"older_priority"`
+	RemoveCompletedAfter int      `json:"removeCompletedAfter"  db:"remove_completed_after"`
+	Enabled              bool     `json:"enabled"               db:"enabled"`
+	Priority             int      `json:"priority"              db:"priority"`
+	NzbFolder            string   `json:"nzbFolder,omitempty"   db:"nzb_folder"`
+	TorrentFolder        string   `json:"torrentFolder,omitempty" db:"torrent_folder"`
+	WatchFolder          string   `json:"watchFolder,omitempty" db:"watch_folder"`
+	DownloadDir          string   `json:"downloadDir,omitempty" db:"download_dir"` // For direct downloads
+	CreatedAt            string   `json:"createdAt"             db:"created_at"`
+	UpdatedAt            string   `json:"updatedAt"             db:"updated_at"`
 }
 
 // ClientType values.

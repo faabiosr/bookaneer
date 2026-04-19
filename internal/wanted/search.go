@@ -58,10 +58,20 @@ func (s *Service) searchDigitalLibraries(ctx context.Context, b *book.Book, quer
 		validResults = append(validResults, r)
 
 		// Save to search_results table for fallback
-		_, err := s.db.ExecContext(ctx, `
+		_, err := s.db.NamedExecContext(ctx, `
 			INSERT INTO search_results (book_id, provider, title, download_url, format, size, score, priority, status)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, b.ID, r.Provider, r.Title, r.DownloadURL, r.Format, r.Size, r.Score, priority, searchResultPending)
+			VALUES (:book_id, :provider, :title, :download_url, :format, :size, :score, :priority, :status)
+		`, map[string]any{
+			"book_id":      b.ID,
+			"provider":     r.Provider,
+			"title":        r.Title,
+			"download_url": r.DownloadURL,
+			"format":       r.Format,
+			"size":         r.Size,
+			"score":        r.Score,
+			"priority":     priority,
+			"status":       searchResultPending,
+		})
 		if err != nil {
 			slog.Warn("Failed to save search result", "error", err)
 		}
@@ -81,24 +91,27 @@ func (s *Service) searchDigitalLibraries(ctx context.Context, b *book.Book, quer
 // grabNextSearchResult tries to grab the next pending search result for a book.
 func (s *Service) grabNextSearchResult(ctx context.Context, b *book.Book) (*GrabResult, error) {
 	// Get next pending result
-	var resultID int64
-	var provider, title, downloadURL, format string
-	var size int64
-
-	err := s.db.QueryRowContext(ctx, `
-		SELECT id, provider, title, download_url, format, size 
-		FROM search_results 
+	var nextResult struct {
+		ID          int64  `db:"id"`
+		Provider    string `db:"provider"`
+		Title       string `db:"title"`
+		DownloadURL string `db:"download_url"`
+		Format      string `db:"format"`
+		Size        int64  `db:"size"`
+	}
+	if err := s.db.GetContext(ctx, &nextResult, `
+		SELECT id, provider, title, download_url, format, size
+		FROM search_results
 		WHERE book_id = ? AND status = ?
 		ORDER BY priority ASC
 		LIMIT 1
-	`, b.ID, searchResultPending).Scan(&resultID, &provider, &title, &downloadURL, &format, &size)
-
-	if err != nil {
+	`, b.ID, searchResultPending); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("no more download sources available for %q", b.Title)
 		}
 		return nil, fmt.Errorf("get next search result: %w", err)
 	}
+	resultID := nextResult.ID
 
 	// Mark as tried
 	if _, err := s.db.ExecContext(ctx, `
@@ -110,11 +123,11 @@ func (s *Service) grabNextSearchResult(ctx context.Context, b *book.Book) (*Grab
 
 	// Build library result struct
 	r := &library.SearchResult{
-		Provider:    provider,
-		Title:       title,
-		DownloadURL: downloadURL,
-		Format:      format,
-		Size:        size,
+		Provider:    nextResult.Provider,
+		Title:       nextResult.Title,
+		DownloadURL: nextResult.DownloadURL,
+		Format:      nextResult.Format,
+		Size:        nextResult.Size,
 	}
 
 	// Try to grab it
@@ -182,7 +195,7 @@ func (s *Service) searchIndexers(ctx context.Context, b *book.Book, query string
 func (s *Service) tryNextSource(ctx context.Context, queueID int64, errorMessage string) bool {
 	// Get book_id from queue
 	var bookID int64
-	err := s.db.QueryRowContext(ctx, `SELECT book_id FROM download_queue WHERE id = ?`, queueID).Scan(&bookID)
+	err := s.db.GetContext(ctx, &bookID, `SELECT book_id FROM download_queue WHERE id = ?`, queueID)
 	if err != nil {
 		slog.Warn("Failed to get book_id for retry", "queueId", queueID, "error", err)
 		return false
@@ -197,9 +210,9 @@ func (s *Service) tryNextSource(ctx context.Context, queueID int64, errorMessage
 
 	// Check if there are more sources to try
 	var pendingCount int
-	err = s.db.QueryRowContext(ctx, `
+	err = s.db.GetContext(ctx, &pendingCount, `
 		SELECT COUNT(*) FROM search_results WHERE book_id = ? AND status = ?
-	`, bookID, searchResultPending).Scan(&pendingCount)
+	`, bookID, searchResultPending)
 	if err != nil || pendingCount == 0 {
 		slog.Info("No more download sources available", "book", b.Title)
 		return false
@@ -230,7 +243,7 @@ func (s *Service) tryNextSource(ctx context.Context, queueID int64, errorMessage
 func (s *Service) cleanupSearchResults(ctx context.Context, queueID int64) {
 	// Get book_id from queue
 	var bookID int64
-	err := s.db.QueryRowContext(ctx, `SELECT book_id FROM download_queue WHERE id = ?`, queueID).Scan(&bookID)
+	err := s.db.GetContext(ctx, &bookID, `SELECT book_id FROM download_queue WHERE id = ?`, queueID)
 	if err != nil {
 		return
 	}
@@ -244,9 +257,9 @@ func (s *Service) cleanupSearchResults(ctx context.Context, queueID int64) {
 // GetPendingSourcesCount returns the number of pending download sources for a book.
 func (s *Service) GetPendingSourcesCount(ctx context.Context, bookID int64) int {
 	var count int
-	_ = s.db.QueryRowContext(ctx, `
+	_ = s.db.GetContext(ctx, &count, `
 		SELECT COUNT(*) FROM search_results WHERE book_id = ? AND status = ?
-	`, bookID, searchResultPending).Scan(&count)
+	`, bookID, searchResultPending)
 	return count
 }
 
@@ -254,15 +267,19 @@ func (s *Service) GetPendingSourcesCount(ctx context.Context, bookID int64) int 
 // and attempting the next available one. The mismatched file is kept (flagged)
 // so the user can inspect it.
 func (s *Service) tryNextSourceForMismatch(ctx context.Context, queueID int64) {
-	var bookID int64
-	var title, downloadURL, format string
-	err := s.db.QueryRowContext(ctx, `
+	var queueItem struct {
+		BookID      int64  `db:"book_id"`
+		Title       string `db:"title"`
+		DownloadURL string `db:"download_url"`
+		Format      string `db:"format"`
+	}
+	if err := s.db.GetContext(ctx, &queueItem, `
 		SELECT book_id, title, download_url, format FROM download_queue WHERE id = ?
-	`, queueID).Scan(&bookID, &title, &downloadURL, &format)
-	if err != nil {
+	`, queueID); err != nil {
 		slog.Warn("failed to get queue item for mismatch retry", "queueId", queueID, "error", err)
 		return
 	}
+	bookID, title, format := queueItem.BookID, queueItem.Title, queueItem.Format
 
 	// Blocklist the bad source so we don't try it again
 	_ = s.AddToBlocklist(ctx, bookID, title, format, "content mismatch detected automatically")

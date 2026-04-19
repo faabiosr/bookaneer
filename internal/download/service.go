@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/jmoiron/sqlx"
 )
 
 // parseTimestamp parses a timestamp string, trying RFC3339 first then the
@@ -21,7 +23,7 @@ func parseTimestamp(s string) time.Time {
 
 // Service manages download clients and queue operations.
 type Service struct {
-	db                   *sql.DB
+	db                   *sqlx.DB
 	mu                   sync.RWMutex
 	clients              map[int64]Client
 	embeddedClient       Client        // Auto-configured direct downloader
@@ -29,7 +31,7 @@ type Service struct {
 }
 
 // NewService creates a new download service.
-func NewService(db *sql.DB) *Service {
+func NewService(db *sqlx.DB) *Service {
 	return &Service{
 		db:      db,
 		clients: make(map[int64]Client),
@@ -150,16 +152,22 @@ func (s *Service) CreateGrab(ctx context.Context, grab *GrabItem) error {
 	grab.GrabbedAt = now
 	grab.Status = GrabStatusPending
 
-	query := `
+	result, err := s.db.NamedExecContext(ctx, `
 		INSERT INTO grabs (book_id, indexer_id, release_title, download_url, size, quality,
 		                   client_id, status, grabbed_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`
-
-	result, err := s.db.ExecContext(ctx, query,
-		grab.BookID, grab.IndexerID, grab.ReleaseTitle, grab.DownloadURL,
-		grab.Size, grab.Quality, grab.ClientID, grab.Status, now,
-	)
+		VALUES (:book_id, :indexer_id, :release_title, :download_url, :size, :quality,
+		        :client_id, :status, :grabbed_at)
+	`, map[string]any{
+		"book_id":       grab.BookID,
+		"indexer_id":    grab.IndexerID,
+		"release_title": grab.ReleaseTitle,
+		"download_url":  grab.DownloadURL,
+		"size":          grab.Size,
+		"quality":       grab.Quality,
+		"client_id":     grab.ClientID,
+		"status":        grab.Status,
+		"grabbed_at":    now,
+	})
 	if err != nil {
 		return fmt.Errorf("insert grab: %w", err)
 	}
@@ -232,17 +240,17 @@ func (s *Service) SendGrab(ctx context.Context, grabID int64, clientID int64) er
 	})
 	if err != nil {
 		// Update grab with error
-		_, _ = s.db.ExecContext(ctx,
-			"UPDATE grabs SET status = ?, error_message = ? WHERE id = ?",
-			GrabStatusFailed, err.Error(), grabID,
+		_, _ = s.db.NamedExecContext(ctx,
+			"UPDATE grabs SET status = :status, error_message = :error_message WHERE id = :id",
+			map[string]any{"status": GrabStatusFailed, "error_message": err.Error(), "id": grabID},
 		)
 		return fmt.Errorf("add to client: %w", err)
 	}
 
 	// Update grab with success
-	_, err = s.db.ExecContext(ctx,
-		"UPDATE grabs SET client_id = ?, download_id = ?, status = ? WHERE id = ?",
-		clientID, downloadID, GrabStatusSent, grabID,
+	_, err = s.db.NamedExecContext(ctx,
+		"UPDATE grabs SET client_id = :client_id, download_id = :download_id, status = :status WHERE id = :id",
+		map[string]any{"client_id": clientID, "download_id": downloadID, "status": GrabStatusSent, "id": grabID},
 	)
 	if err != nil {
 		return fmt.Errorf("update grab: %w", err)

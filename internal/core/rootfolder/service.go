@@ -7,26 +7,27 @@ import (
 	"os"
 	"strings"
 
+	"github.com/jmoiron/sqlx"
 	"golang.org/x/sys/unix"
 )
 
 // Service provides root folder-related operations.
 type Service struct {
-	db *sql.DB
+	db *sqlx.DB
 }
 
 // New creates a new root folder service.
-func New(db *sql.DB) *Service {
+func New(db *sqlx.DB) *Service {
 	return &Service{db: db}
 }
 
 // FindByID returns a root folder by ID.
 func (s *Service) FindByID(ctx context.Context, id int64) (*RootFolder, error) {
 	var rf RootFolder
-	err := s.db.QueryRowContext(ctx, `
+	err := s.db.GetContext(ctx, &rf, `
 		SELECT id, path, name, default_quality_profile_id
 		FROM root_folders WHERE id = ?
-	`, id).Scan(&rf.ID, &rf.Path, &rf.Name, &rf.DefaultQualityProfileID)
+	`, id)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
 	}
@@ -42,28 +43,14 @@ func (s *Service) FindByID(ctx context.Context, id int64) (*RootFolder, error) {
 
 // List returns all root folders.
 func (s *Service) List(ctx context.Context) ([]RootFolder, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	var folders []RootFolder
+	if err := s.db.SelectContext(ctx, &folders, `
 		SELECT id, path, name, default_quality_profile_id
 		FROM root_folders ORDER BY name
-	`)
-	if err != nil {
+	`); err != nil {
 		return nil, fmt.Errorf("list root folders: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
 
-	var folders []RootFolder
-	for rows.Next() {
-		var rf RootFolder
-		if err := rows.Scan(&rf.ID, &rf.Path, &rf.Name, &rf.DefaultQualityProfileID); err != nil {
-			return nil, fmt.Errorf("scan root folder: %w", err)
-		}
-		folders = append(folders, rf)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate root folders: %w", err)
-	}
-
-	// Enrich after closing rows to avoid SQLite connection contention
 	for i := range folders {
 		s.enrichWithDiskInfo(&folders[i])
 		s.enrichWithAuthorCount(ctx, &folders[i])
@@ -204,8 +191,8 @@ func (s *Service) enrichWithDiskInfo(rf *RootFolder) {
 func (s *Service) enrichWithAuthorCount(ctx context.Context, rf *RootFolder) {
 	var count int
 	// Count authors whose path starts with this root folder path
-	_ = s.db.QueryRowContext(ctx, `
+	_ = s.db.GetContext(ctx, &count, `
 		SELECT COUNT(*) FROM authors WHERE path LIKE ?
-	`, rf.Path+"%").Scan(&count)
+	`, rf.Path+"%")
 	rf.AuthorCount = count
 }

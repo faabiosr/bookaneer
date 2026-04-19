@@ -2,76 +2,46 @@ package search
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 	"sync"
 
-	"github.com/woliveiras/bookaneer/internal/database"
+	"github.com/jmoiron/sqlx"
 )
 
 // Service manages indexers and search operations.
 type Service struct {
-	db      *sql.DB
+	db      *sqlx.DB
 	clients map[int64]Indexer
 	mu      sync.RWMutex
 }
 
 // NewService creates a new search service.
-func NewService(db *sql.DB) *Service {
+func NewService(db *sqlx.DB) *Service {
 	return &Service{
 		db:      db,
 		clients: make(map[int64]Indexer),
 	}
 }
 
-// scanner is an alias for database.Scanner (abstracts sql.Row and sql.Rows).
-type scanner = database.Scanner
-
-// scanIndexer scans a row into IndexerConfig
-func scanIndexer(s scanner) (IndexerConfig, error) {
-	var cfg IndexerConfig
-	var enabled, enableRSS, enableAutoSearch, enableInteractiveSearch int
-	err := s.Scan(
-		&cfg.ID, &cfg.Name, &cfg.Type, &cfg.BaseURL, &cfg.APIPath, &cfg.APIKey,
-		&cfg.Categories, &cfg.Priority, &enabled,
-		&enableRSS, &enableAutoSearch, &enableInteractiveSearch,
-		&cfg.AdditionalParameters, &cfg.MinimumSeeders, &cfg.SeedRatio, &cfg.SeedTime,
-		&cfg.CreatedAt, &cfg.UpdatedAt,
-	)
-	if err != nil {
-		return cfg, err
-	}
-	cfg.Enabled = enabled == 1
-	cfg.EnableRSS = enableRSS == 1
-	cfg.EnableAutomaticSearch = enableAutoSearch == 1
-	cfg.EnableInteractiveSearch = enableInteractiveSearch == 1
-	return cfg, nil
-}
-
 // LoadIndexers loads all enabled indexers from the database.
 func (s *Service) LoadIndexers(ctx context.Context) error {
-	rows, err := s.db.QueryContext(ctx, `
+	var indexers []IndexerConfig
+	if err := s.db.SelectContext(ctx, &indexers, `
 		SELECT id, name, type, base_url, api_path, api_key, categories, priority, enabled,
 		       enable_rss, enable_automatic_search, enable_interactive_search,
 		       additional_parameters, minimum_seeders, seed_ratio, seed_time,
 		       created_at, updated_at
 		FROM indexers WHERE enabled = 1
-	`)
-	if err != nil {
+	`); err != nil {
 		return fmt.Errorf("query indexers: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.clients = make(map[int64]Indexer)
 
-	for rows.Next() {
-		cfg, err := scanIndexer(rows)
-		if err != nil {
-			return fmt.Errorf("scan indexer: %w", err)
-		}
+	for _, cfg := range indexers {
 		factory, ok := GetFactory(cfg.Type)
 		if !ok {
 			continue
@@ -82,7 +52,7 @@ func (s *Service) LoadIndexers(ctx context.Context) error {
 		}
 		s.clients[cfg.ID] = indexer
 	}
-	return rows.Err()
+	return nil
 }
 
 // TestIndexer tests the connection to an indexer.

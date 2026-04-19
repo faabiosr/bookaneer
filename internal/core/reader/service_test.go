@@ -21,8 +21,8 @@ func TestGetBookFile(t *testing.T) {
 	svc := reader.New(db)
 	ctx := context.Background()
 
-	authorID := testutil.SeedAuthor(t, db, "Test Author")
-	bookID := testutil.SeedBook(t, db, authorID, "Test Book")
+	authorID := testutil.SeedAuthor(t, db,"Test Author")
+	bookID := testutil.SeedBook(t, db,authorID, "Test Book")
 
 	_, err := db.Exec(`INSERT INTO book_files (book_id, path, relative_path, size, format, quality) VALUES (?, '/tmp/test.epub', 'test.epub', 1024, 'epub', 'epub')`, bookID)
 	require.NoError(t, err)
@@ -49,8 +49,8 @@ func TestListBookFiles(t *testing.T) {
 	svc := reader.New(db)
 	ctx := context.Background()
 
-	authorID := testutil.SeedAuthor(t, db, "Author")
-	bookID := testutil.SeedBook(t, db, authorID, "Book")
+	authorID := testutil.SeedAuthor(t, db,"Author")
+	bookID := testutil.SeedBook(t, db,authorID, "Book")
 
 	_, err := db.Exec(`INSERT INTO book_files (book_id, path, relative_path, size, format, quality) VALUES (?, '/tmp/a.epub', 'a.epub', 100, 'epub', 'epub')`, bookID)
 	require.NoError(t, err)
@@ -75,8 +75,8 @@ func TestSaveProgress(t *testing.T) {
 	svc := reader.New(db)
 	ctx := context.Background()
 
-	authorID := testutil.SeedAuthor(t, db, "Author")
-	bookID := testutil.SeedBook(t, db, authorID, "Book")
+	authorID := testutil.SeedAuthor(t, db,"Author")
+	bookID := testutil.SeedBook(t, db,authorID, "Book")
 	_, err := db.Exec(`INSERT INTO book_files (book_id, path, relative_path, size, format, quality) VALUES (?, '/tmp/r.epub', 'r.epub', 100, 'epub', 'epub')`, bookID)
 	require.NoError(t, err)
 	var fileID int64
@@ -97,8 +97,8 @@ func TestSaveProgress_Update(t *testing.T) {
 	svc := reader.New(db)
 	ctx := context.Background()
 
-	authorID := testutil.SeedAuthor(t, db, "Author")
-	bookID := testutil.SeedBook(t, db, authorID, "Book")
+	authorID := testutil.SeedAuthor(t, db,"Author")
+	bookID := testutil.SeedBook(t, db,authorID, "Book")
 	_, err := db.Exec(`INSERT INTO book_files (book_id, path, relative_path, size, format, quality) VALUES (?, '/tmp/u.epub', 'u.epub', 100, 'epub', 'epub')`, bookID)
 	require.NoError(t, err)
 	var fileID int64
@@ -121,8 +121,8 @@ func TestGetProgress(t *testing.T) {
 	svc := reader.New(db)
 	ctx := context.Background()
 
-	authorID := testutil.SeedAuthor(t, db, "Author")
-	bookID := testutil.SeedBook(t, db, authorID, "Book")
+	authorID := testutil.SeedAuthor(t, db,"Author")
+	bookID := testutil.SeedBook(t, db,authorID, "Book")
 	_, err := db.Exec(`INSERT INTO book_files (book_id, path, relative_path, size, format, quality) VALUES (?, '/tmp/g.epub', 'g.epub', 100, 'epub', 'epub')`, bookID)
 	require.NoError(t, err)
 	var fileID int64
@@ -151,8 +151,8 @@ func TestCreateBookmark(t *testing.T) {
 	svc := reader.New(db)
 	ctx := context.Background()
 
-	authorID := testutil.SeedAuthor(t, db, "Author")
-	bookID := testutil.SeedBook(t, db, authorID, "Book")
+	authorID := testutil.SeedAuthor(t, db,"Author")
+	bookID := testutil.SeedBook(t, db,authorID, "Book")
 	_, err := db.Exec(`INSERT INTO book_files (book_id, path, relative_path, size, format, quality) VALUES (?, '/tmp/bm.epub', 'bm.epub', 100, 'epub', 'epub')`, bookID)
 	require.NoError(t, err)
 	var fileID int64
@@ -172,8 +172,8 @@ func TestListBookmarks(t *testing.T) {
 	svc := reader.New(db)
 	ctx := context.Background()
 
-	authorID := testutil.SeedAuthor(t, db, "Author")
-	bookID := testutil.SeedBook(t, db, authorID, "Book")
+	authorID := testutil.SeedAuthor(t, db,"Author")
+	bookID := testutil.SeedBook(t, db,authorID, "Book")
 	_, err := db.Exec(`INSERT INTO book_files (book_id, path, relative_path, size, format, quality) VALUES (?, '/tmp/lb.epub', 'lb.epub', 100, 'epub', 'epub')`, bookID)
 	require.NoError(t, err)
 	var fileID int64
@@ -204,8 +204,8 @@ func TestGetBookmark(t *testing.T) {
 	svc := reader.New(db)
 	ctx := context.Background()
 
-	authorID := testutil.SeedAuthor(t, db, "Author")
-	bookID := testutil.SeedBook(t, db, authorID, "Book")
+	authorID := testutil.SeedAuthor(t, db,"Author")
+	bookID := testutil.SeedBook(t, db,authorID, "Book")
 	_, err := db.Exec(`INSERT INTO book_files (book_id, path, relative_path, size, format, quality) VALUES (?, '/tmp/gb.epub', 'gb.epub', 100, 'epub', 'epub')`, bookID)
 	require.NoError(t, err)
 	var fileID int64
@@ -233,8 +233,8 @@ func TestDeleteBookmark(t *testing.T) {
 	svc := reader.New(db)
 	ctx := context.Background()
 
-	authorID := testutil.SeedAuthor(t, db, "Author")
-	bookID := testutil.SeedBook(t, db, authorID, "Book")
+	authorID := testutil.SeedAuthor(t, db,"Author")
+	bookID := testutil.SeedBook(t, db,authorID, "Book")
 	_, err := db.Exec(`INSERT INTO book_files (book_id, path, relative_path, size, format, quality) VALUES (?, '/tmp/db.epub', 'db.epub', 100, 'epub', 'epub')`, bookID)
 	require.NoError(t, err)
 	var fileID int64
@@ -288,8 +288,8 @@ func TestListBookFiles_WithMultipleFiles(t *testing.T) {
 	svc := reader.New(db)
 	ctx := context.Background()
 
-	authorID := testutil.SeedAuthor(t, db, "Multi Author")
-	bookID := testutil.SeedBook(t, db, authorID, "Multi Book")
+	authorID := testutil.SeedAuthor(t, db,"Multi Author")
+	bookID := testutil.SeedBook(t, db,authorID, "Multi Book")
 
 	_, err := db.Exec(`INSERT INTO book_files (book_id, path, relative_path, size, format, quality) VALUES (?, '/a.epub', 'a.epub', 100, 'epub', 'epub')`, bookID)
 	require.NoError(t, err)

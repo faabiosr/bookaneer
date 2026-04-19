@@ -22,14 +22,17 @@ func (s *Service) importCompletedDownload(ctx context.Context, queueID int64, so
 	}
 
 	// Get queue item to find book_id
-	var bookID int64
-	var format string
-	err := s.db.QueryRowContext(ctx, `
+	var queueItem struct {
+		BookID int64  `db:"book_id"`
+		Format string `db:"format"`
+	}
+	err := s.db.GetContext(ctx, &queueItem, `
 		SELECT book_id, format FROM download_queue WHERE id = ?
-	`, queueID).Scan(&bookID, &format)
+	`, queueID)
 	if err != nil {
 		return false, fmt.Errorf("get queue item: %w", err)
 	}
+	bookID, format := queueItem.BookID, queueItem.Format
 
 	// Get book info
 	b, err := s.bookService.FindByID(ctx, bookID)
@@ -39,7 +42,7 @@ func (s *Service) importCompletedDownload(ctx context.Context, queueID int64, so
 
 	// Get first root folder
 	var rootPath string
-	err = s.db.QueryRowContext(ctx, `SELECT path FROM root_folders ORDER BY id LIMIT 1`).Scan(&rootPath)
+	err = s.db.GetContext(ctx, &rootPath, `SELECT path FROM root_folders ORDER BY id LIMIT 1`)
 	if err != nil {
 		return false, fmt.Errorf("get root folder: %w", err)
 	}
@@ -69,7 +72,7 @@ func (s *Service) importCompletedDownload(ctx context.Context, queueID int64, so
 
 	// Check for duplicate: if book already has a file, handle it
 	var existingFileID int64
-	err = s.db.QueryRowContext(ctx, `SELECT id FROM book_files WHERE book_id = ?`, bookID).Scan(&existingFileID)
+	err = s.db.GetContext(ctx, &existingFileID, `SELECT id FROM book_files WHERE book_id = ?`, bookID)
 	if err == nil {
 		slog.Info("Book already has a file, replacing", "bookId", bookID, "existingFileId", existingFileID)
 		_, _ = s.db.ExecContext(ctx, `DELETE FROM book_files WHERE id = ?`, existingFileID)
@@ -151,10 +154,19 @@ func (s *Service) importCompletedDownload(ctx context.Context, queueID int64, so
 	}
 
 	// Add to book_files
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.db.NamedExecContext(ctx, `
 		INSERT INTO book_files (book_id, path, relative_path, size, format, quality, hash, content_mismatch)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, bookID, destPath, relativePath, info.Size(), format, format, hash, contentMismatch)
+		VALUES (:book_id, :path, :relative_path, :size, :format, :quality, :hash, :content_mismatch)
+	`, map[string]any{
+		"book_id":          bookID,
+		"path":             destPath,
+		"relative_path":    relativePath,
+		"size":             info.Size(),
+		"format":           format,
+		"quality":          format,
+		"hash":             hash,
+		"content_mismatch": contentMismatch,
+	})
 	if err != nil {
 		return false, fmt.Errorf("insert book_file: %w", err)
 	}
@@ -207,7 +219,7 @@ func (s *Service) buildNamingContext(ctx context.Context, b *book.Book, format, 
 
 	// Get author sort name
 	var sortName string
-	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(sort_name, '') FROM authors WHERE id = ?`, b.AuthorID).Scan(&sortName)
+	err := s.db.GetContext(ctx, &sortName, `SELECT COALESCE(sort_name, '') FROM authors WHERE id = ?`, b.AuthorID)
 	if err == nil && sortName != "" {
 		nc.SortAuthor = sortName
 	}
@@ -218,17 +230,19 @@ func (s *Service) buildNamingContext(ctx context.Context, b *book.Book, format, 
 	}
 
 	// Get series info
-	var seriesTitle, position string
-	err = s.db.QueryRowContext(ctx, `
+	var seriesInfo struct {
+		Series   string `db:"title"`
+		Position string `db:"position"`
+	}
+	if err := s.db.GetContext(ctx, &seriesInfo, `
 		SELECT s.title, sb.position
 		FROM series_books sb
 		JOIN series s ON sb.series_id = s.id
 		WHERE sb.book_id = ?
 		LIMIT 1
-	`, b.ID).Scan(&seriesTitle, &position)
-	if err == nil {
-		nc.Series = seriesTitle
-		nc.SeriesPosition = position
+	`, b.ID); err == nil {
+		nc.Series = seriesInfo.Series
+		nc.SeriesPosition = seriesInfo.Position
 	}
 
 	return nc

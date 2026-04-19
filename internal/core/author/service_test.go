@@ -12,7 +12,7 @@ import (
 
 func newTestService(t *testing.T) *author.Service {
 	t.Helper()
-	return author.New(testutil.OpenTestDBX(t))
+	return author.New(testutil.OpenTestDB(t))
 }
 
 func TestCreate_Success(t *testing.T) {
@@ -212,13 +212,13 @@ func TestList_Search(t *testing.T) {
 }
 
 func TestGetStats(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
-	authorID := testutil.SeedAuthor(t, db.DB, "Tolkien")
-	testutil.SeedBook(t, db.DB, authorID, "The Hobbit")
-	testutil.SeedBook(t, db.DB, authorID, "LOTR")
+	authorID := testutil.SeedAuthor(t, db, "Tolkien")
+	testutil.SeedBook(t, db, authorID, "The Hobbit")
+	testutil.SeedBook(t, db, authorID, "LOTR")
 
 	stats, err := svc.GetStats(ctx, authorID)
 	require.NoError(t, err)

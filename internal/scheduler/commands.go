@@ -21,10 +21,18 @@ func (s *Scheduler) QueueCommand(ctx context.Context, name CommandName, trigger 
 		return "", fmt.Errorf("marshal payload: %w", err)
 	}
 
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.db.NamedExecContext(ctx, `
 		INSERT INTO commands (id, name, status, priority, payload, trigger, queued_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, id, name, StatusQueued, 0, string(payloadJSON), trigger, time.Now().UTC().Format(time.RFC3339))
+		VALUES (:id, :name, :status, :priority, :payload, :trigger, :queued_at)
+	`, map[string]any{
+		"id":        id,
+		"name":      name,
+		"status":    StatusQueued,
+		"priority":  0,
+		"payload":   string(payloadJSON),
+		"trigger":   trigger,
+		"queued_at": time.Now().UTC().Format(time.RFC3339),
+	})
 
 	if err != nil {
 		return "", fmt.Errorf("insert command: %w", err)

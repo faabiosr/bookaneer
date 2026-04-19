@@ -6,12 +6,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"github.com/woliveiras/bookaneer/internal/core/author"
 	"github.com/woliveiras/bookaneer/internal/testutil"
 )
 
 func TestFindByForeignID(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -26,21 +27,21 @@ func TestFindByForeignID(t *testing.T) {
 }
 
 func TestFindByForeignID_NotFound(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	_, err := svc.FindByForeignID(context.Background(), "nonexistent")
 	require.ErrorIs(t, err, author.ErrNotFound)
 }
 
 func TestFindByName_NotFound(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	_, err := svc.FindByName(context.Background(), "ghost")
 	require.ErrorIs(t, err, author.ErrNotFound)
 }
 
 func TestCreate_WithSortName(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -52,7 +53,7 @@ func TestCreate_WithSortName(t *testing.T) {
 }
 
 func TestUpdate_MultipleFields(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -74,7 +75,7 @@ func TestUpdate_MultipleFields(t *testing.T) {
 }
 
 func TestDelete_WithBooks(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -82,7 +83,7 @@ func TestDelete_WithBooks(t *testing.T) {
 		Name: "Author", Monitored: true, Path: t.TempDir(),
 	})
 	require.NoError(t, err)
-	testutil.SeedBook(t, db.DB, created.ID, "Book 1")
+	testutil.SeedBook(t, db, created.ID, "Book 1")
 
 	err = svc.Delete(ctx, created.ID, false)
 	require.NoError(t, err)
@@ -92,7 +93,7 @@ func TestDelete_WithBooks(t *testing.T) {
 }
 
 func TestList_MonitoredFilter(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -108,7 +109,7 @@ func TestList_MonitoredFilter(t *testing.T) {
 }
 
 func TestList_Pagination(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -125,7 +126,7 @@ func TestList_Pagination(t *testing.T) {
 }
 
 func TestList_SortBy(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -138,7 +139,7 @@ func TestList_SortBy(t *testing.T) {
 }
 
 func TestCreate_ExistingForeignID_Remonitors(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -157,7 +158,7 @@ func TestCreate_ExistingForeignID_Remonitors(t *testing.T) {
 }
 
 func TestCreate_ExistingName_Remonitors(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -175,7 +176,7 @@ func TestCreate_ExistingName_Remonitors(t *testing.T) {
 }
 
 func TestCreate_DefaultStatus(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	created, err := svc.Create(context.Background(), author.CreateAuthorInput{
 		Name: "Author", Monitored: true, Path: t.TempDir(),
@@ -185,7 +186,7 @@ func TestCreate_DefaultStatus(t *testing.T) {
 }
 
 func TestUpdate_AllFields(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -217,7 +218,7 @@ func TestUpdate_AllFields(t *testing.T) {
 }
 
 func TestUpdate_EmptyInput(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -230,7 +231,7 @@ func TestUpdate_EmptyInput(t *testing.T) {
 }
 
 func TestUpdate_MissingAuthor(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	name := "X"
 	_, err := svc.Update(context.Background(), 9999, author.UpdateAuthorInput{Name: &name})
@@ -238,14 +239,14 @@ func TestUpdate_MissingAuthor(t *testing.T) {
 }
 
 func TestDelete_MissingAuthor(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	err := svc.Delete(context.Background(), 9999, false)
 	require.ErrorIs(t, err, author.ErrNotFound)
 }
 
 func TestList_StatusFilter(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -259,7 +260,7 @@ func TestList_StatusFilter(t *testing.T) {
 }
 
 func TestList_SortDesc(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -272,7 +273,7 @@ func TestList_SortDesc(t *testing.T) {
 }
 
 func TestList_Offset(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -289,15 +290,15 @@ func TestList_Offset(t *testing.T) {
 }
 
 func TestGetStats_WithFilesAndMissing(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
 	created, err := svc.Create(ctx, author.CreateAuthorInput{Name: "Author", Path: t.TempDir()})
 	require.NoError(t, err)
 
-	bookID := testutil.SeedBook(t, db.DB, created.ID, "Book 1")
-	testutil.SeedBook(t, db.DB, created.ID, "Book 2")
+	bookID := testutil.SeedBook(t, db, created.ID, "Book 1")
+	testutil.SeedBook(t, db, created.ID, "Book 2")
 
 	_, err = db.Exec(`INSERT INTO book_files (book_id, path, relative_path, size, format, quality) VALUES (?, '/tmp/a.epub', 'a.epub', 5000, 'epub', 'epub')`, bookID)
 	require.NoError(t, err)
@@ -311,7 +312,7 @@ func TestGetStats_WithFilesAndMissing(t *testing.T) {
 }
 
 func TestDelete_WithFiles(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -327,7 +328,7 @@ func TestDelete_WithFiles(t *testing.T) {
 }
 
 func TestUpdate_DuplicateForeignID(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -342,7 +343,7 @@ func TestUpdate_DuplicateForeignID(t *testing.T) {
 }
 
 func TestCreate_WithAllFields(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -364,7 +365,7 @@ func TestCreate_WithAllFields(t *testing.T) {
 }
 
 func TestList_SearchByName(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 

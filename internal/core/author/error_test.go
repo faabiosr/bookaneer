@@ -8,12 +8,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"github.com/woliveiras/bookaneer/internal/core/author"
 	"github.com/woliveiras/bookaneer/internal/testutil"
 )
 
 func TestFindByID_DBClosed(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -25,7 +26,7 @@ func TestFindByID_DBClosed(t *testing.T) {
 }
 
 func TestFindByForeignID_DBClosed(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -37,7 +38,7 @@ func TestFindByForeignID_DBClosed(t *testing.T) {
 }
 
 func TestFindByName_DBClosed(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -49,7 +50,7 @@ func TestFindByName_DBClosed(t *testing.T) {
 }
 
 func TestList_CountQueryError(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -60,7 +61,7 @@ func TestList_CountQueryError(t *testing.T) {
 }
 
 func TestCreate_ForeignIDCheckError(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -76,7 +77,7 @@ func TestCreate_ForeignIDCheckError(t *testing.T) {
 }
 
 func TestCreate_NameCheckError(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -92,7 +93,7 @@ func TestCreate_NameCheckError(t *testing.T) {
 }
 
 func TestGetStats_DBError(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -103,7 +104,7 @@ func TestGetStats_DBError(t *testing.T) {
 }
 
 func TestList_MonitoredFalseFilter(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -119,7 +120,7 @@ func TestList_MonitoredFalseFilter(t *testing.T) {
 }
 
 func TestList_SortBySortName(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -133,7 +134,7 @@ func TestList_SortBySortName(t *testing.T) {
 }
 
 func TestList_SortByAddedAt(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
@@ -147,13 +148,13 @@ func TestList_SortByAddedAt(t *testing.T) {
 }
 
 func TestDelete_WithFiles_FolderAbsent(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
 	dir := t.TempDir()
-	testutil.SeedRootFolder(t, db.DB, dir, "test")
-	authorID := testutil.SeedAuthor(t, db.DB, "Author Without Folder")
+	testutil.SeedRootFolder(t, db, dir, "test")
+	authorID := testutil.SeedAuthor(t, db, "Author Without Folder")
 
 	// Author folder does not exist on disk — deleteAuthorFiles handles it gracefully.
 	err := svc.Delete(ctx, authorID, true)
@@ -164,18 +165,18 @@ func TestDelete_WithFiles_FolderAbsent(t *testing.T) {
 }
 
 func TestDelete_WithFiles_FolderExists(t *testing.T) {
-	db := testutil.OpenTestDBX(t)
+	db := testutil.OpenTestDB(t)
 	svc := author.New(db)
 	ctx := context.Background()
 
 	dir := t.TempDir()
-	testutil.SeedRootFolder(t, db.DB, dir, "test")
-	authorID := testutil.SeedAuthor(t, db.DB, "Author With Books")
+	testutil.SeedRootFolder(t, db, dir, "test")
+	authorID := testutil.SeedAuthor(t, db, "Author With Books")
 
 	// "Author With Books" contains no special chars so sanitizeFolderName is a no-op.
 	authorDir := filepath.Join(dir, "Author With Books")
-	require.NoError(t, os.MkdirAll(authorDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(authorDir, "book.epub"), []byte("data"), 0644))
+	require.NoError(t, os.MkdirAll(authorDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(authorDir, "book.epub"), []byte("data"), 0o644))
 
 	err := svc.Delete(ctx, authorID, true)
 	require.NoError(t, err)

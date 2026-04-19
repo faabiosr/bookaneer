@@ -49,11 +49,15 @@ func (s *Scheduler) updateTaskNextRun(ctx context.Context, name string, interval
 	now := time.Now().UTC()
 	nextRun := now.Add(time.Duration(intervalSeconds) * time.Second)
 
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.db.NamedExecContext(ctx, `
 		UPDATE scheduled_tasks
-		SET last_run_at = ?, next_run_at = ?
-		WHERE name = ?
-	`, now.Format(time.RFC3339), nextRun.Format(time.RFC3339), name)
+		SET last_run_at = :last_run_at, next_run_at = :next_run_at
+		WHERE name = :name
+	`, map[string]any{
+		"last_run_at": now.Format(time.RFC3339),
+		"next_run_at": nextRun.Format(time.RFC3339),
+		"name":        name,
+	})
 
 	return err
 }

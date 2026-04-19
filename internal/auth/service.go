@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -18,27 +19,27 @@ var (
 )
 
 type User struct {
-	ID           int64  `json:"id"`
-	Username     string `json:"username"`
-	Role         string `json:"role"`
-	APIKey       string `json:"apiKey,omitempty"`
-	PasswordHash string `json:"-"`
-	CreatedAt    string `json:"createdAt"`
+	ID           int64  `json:"id"               db:"id"`
+	Username     string `json:"username"         db:"username"`
+	Role         string `json:"role"             db:"role"`
+	APIKey       string `json:"apiKey,omitempty" db:"api_key"`
+	PasswordHash string `json:"-"                db:"password_hash"`
+	CreatedAt    string `json:"createdAt"        db:"created_at"`
 }
 
 type Service struct {
-	db *sql.DB
+	db *sqlx.DB
 }
 
-func New(db *sql.DB) *Service {
+func New(db *sqlx.DB) *Service {
 	return &Service{db: db}
 }
 
 func (s *Service) EnsureAPIKey(ctx context.Context) error {
 	var value string
-	err := s.db.QueryRowContext(ctx,
+	err := s.db.GetContext(ctx, &value,
 		"SELECT value FROM config WHERE key = 'general.apiKey'",
-	).Scan(&value)
+	)
 
 	if err == sql.ErrNoRows || value == "" {
 		apiKey, err := generateAPIKey()
@@ -63,7 +64,7 @@ func (s *Service) EnsureAPIKey(ctx context.Context) error {
 // Returns the password if a new user was created, empty string otherwise.
 func (s *Service) EnsureDefaultAdmin(ctx context.Context, envPassword string) (string, error) {
 	var count int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users").Scan(&count)
+	err := s.db.GetContext(ctx, &count, "SELECT COUNT(*) FROM users")
 	if err != nil {
 		return "", fmt.Errorf("count users: %w", err)
 	}
@@ -104,9 +105,9 @@ func generatePassword(length int) (string, error) {
 
 func (s *Service) GetAPIKey(ctx context.Context) (string, error) {
 	var value string
-	err := s.db.QueryRowContext(ctx,
+	err := s.db.GetContext(ctx, &value,
 		"SELECT value FROM config WHERE key = 'general.apiKey'",
-	).Scan(&value)
+	)
 	if err != nil {
 		return "", fmt.Errorf("get api key: %w", err)
 	}
@@ -122,10 +123,10 @@ func (s *Service) ValidateAPIKey(ctx context.Context, apiKey string) bool {
 		return true
 	}
 	var id int64
-	err = s.db.QueryRowContext(ctx,
+	err = s.db.GetContext(ctx, &id,
 		"SELECT id FROM users WHERE api_key = ?",
 		apiKey,
-	).Scan(&id)
+	)
 	return err == nil
 }
 
@@ -139,9 +140,15 @@ func (s *Service) CreateUser(ctx context.Context, username, password, role strin
 		return nil, fmt.Errorf("generate user api key: %w", err)
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := s.db.ExecContext(ctx,
-		"INSERT INTO users (username, password_hash, api_key, role, created_at) VALUES (?, ?, ?, ?, ?)",
-		username, string(hash), apiKey, role, now,
+	result, err := s.db.NamedExecContext(ctx,
+		"INSERT INTO users (username, password_hash, api_key, role, created_at) VALUES (:username, :password_hash, :api_key, :role, :created_at)",
+		map[string]any{
+			"username":      username,
+			"password_hash": string(hash),
+			"api_key":       apiKey,
+			"role":          role,
+			"created_at":    now,
+		},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create user: %w", err)
@@ -152,10 +159,10 @@ func (s *Service) CreateUser(ctx context.Context, username, password, role strin
 
 func (s *Service) Authenticate(ctx context.Context, username, password string) (*User, error) {
 	var user User
-	err := s.db.QueryRowContext(ctx,
+	err := s.db.GetContext(ctx, &user,
 		"SELECT id, username, password_hash, api_key, role, created_at FROM users WHERE username = ?",
 		username,
-	).Scan(&user.ID, &user.Username, &user.PasswordHash, &user.APIKey, &user.Role, &user.CreatedAt)
+	)
 	if err == sql.ErrNoRows {
 		return nil, ErrInvalidCredentials
 	}
@@ -170,10 +177,10 @@ func (s *Service) Authenticate(ctx context.Context, username, password string) (
 
 func (s *Service) GetUserByAPIKey(ctx context.Context, apiKey string) (*User, error) {
 	var user User
-	err := s.db.QueryRowContext(ctx,
+	err := s.db.GetContext(ctx, &user,
 		"SELECT id, username, api_key, role, created_at FROM users WHERE api_key = ?",
 		apiKey,
-	).Scan(&user.ID, &user.Username, &user.APIKey, &user.Role, &user.CreatedAt)
+	)
 	if err == sql.ErrNoRows {
 		return nil, ErrUserNotFound
 	}

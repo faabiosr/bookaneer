@@ -2,21 +2,22 @@ package naming
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/jmoiron/sqlx"
 )
 
 // Engine formats file and folder paths using configurable naming templates.
 type Engine struct {
-	db *sql.DB
+	db *sqlx.DB
 }
 
 // New creates a new naming Engine.
-func New(db *sql.DB) *Engine {
+func New(db *sqlx.DB) *Engine {
 	return &Engine{db: db}
 }
 
@@ -108,9 +109,9 @@ func (e *Engine) SaveSettings(ctx context.Context, s *Settings) error {
 	}
 
 	for _, p := range pairs {
-		_, err := e.db.ExecContext(ctx,
-			`INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)`,
-			p.key, p.value,
+		_, err := e.db.NamedExecContext(ctx,
+			`INSERT OR REPLACE INTO config (key, value) VALUES (:key, :value)`,
+			map[string]any{"key": p.key, "value": p.value},
 		)
 		if err != nil {
 			return fmt.Errorf("save naming setting %s: %w", p.key, err)
@@ -460,9 +461,13 @@ func (e *Engine) renameAll(ctx context.Context, dryRun bool) (*RenameResult, err
 		}
 
 		// Update database
-		_, err := e.db.ExecContext(ctx, `
-			UPDATE book_files SET path = ?, relative_path = ? WHERE id = ?
-		`, named.FullPath, named.RelativePath, fi.id)
+		_, err := e.db.NamedExecContext(ctx, `
+			UPDATE book_files SET path = :path, relative_path = :relative_path WHERE id = :id
+		`, map[string]any{
+			"path":          named.FullPath,
+			"relative_path": named.RelativePath,
+			"id":            fi.id,
+		})
 		if err != nil {
 			// Try to rename back on DB error
 			_ = os.Rename(named.FullPath, fi.path)

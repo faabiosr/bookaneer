@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/woliveiras/bookaneer/internal/core/book"
@@ -20,16 +21,16 @@ import (
 
 // closedDB returns an already-closed database so that all operations on it fail,
 // enabling tests of error-handling paths without modifying testutil.OpenTestDB.
-func closedDB() *sql.DB {
+func closedDB() *sqlx.DB {
 	db, _ := sql.Open("sqlite", ":memory:")
 	_ = db.Close()
-	return db
+	return sqlx.NewDb(db, "sqlite")
 }
 
 // newTestWantedSvc creates a minimal *wanted.Service backed by a fresh in-memory
 // database. No digital-library providers or indexers are registered, so
 // SearchAllWanted / ProcessDownloads succeed but find nothing.
-func newTestWantedSvc(t *testing.T) (*wanted.Service, *sql.DB) {
+func newTestWantedSvc(t *testing.T) (*wanted.Service, *sqlx.DB) {
 	t.Helper()
 	db := testutil.OpenTestDB(t)
 	return wanted.New(

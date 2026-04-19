@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/woliveiras/bookaneer/internal/download"
@@ -33,8 +34,8 @@ func TestCreateGrab(t *testing.T) {
 	svc := download.NewService(db)
 	ctx := context.Background()
 
-	authorID := testutil.SeedAuthor(t, db, "Author")
-	bookID := testutil.SeedBook(t, db, authorID, "Book")
+	authorID := testutil.SeedAuthor(t, db,"Author")
+	bookID := testutil.SeedBook(t, db,authorID, "Book")
 	_, err := db.Exec(`INSERT INTO indexers (name, type, base_url, enabled) VALUES ('test', 'newznab', 'http://test.com', 1)`)
 	require.NoError(t, err)
 	var indexerID int64
@@ -64,8 +65,8 @@ func TestListGrabs_WithData(t *testing.T) {
 	svc := download.NewService(db)
 	ctx := context.Background()
 
-	authorID := testutil.SeedAuthor(t, db, "Author")
-	bookID := testutil.SeedBook(t, db, authorID, "Book")
+	authorID := testutil.SeedAuthor(t, db,"Author")
+	bookID := testutil.SeedBook(t, db,authorID, "Book")
 	_, _ = db.Exec(`INSERT INTO indexers (name, type, base_url, enabled) VALUES ('idx', 'newznab', 'http://x.com', 1)`)
 	var indexerID int64
 	_ = db.QueryRow("SELECT id FROM indexers LIMIT 1").Scan(&indexerID)
@@ -123,7 +124,7 @@ func TestGetDirectClient_WithRootFolder(t *testing.T) {
 	ctx := context.Background()
 
 	dir := t.TempDir()
-	testutil.SeedRootFolder(t, db, dir, "Library")
+	testutil.SeedRootFolder(t, db,dir, "Library")
 
 	client, cfg, err := svc.GetDirectClient(ctx)
 	require.NoError(t, err)
@@ -193,8 +194,8 @@ func TestSendGrab_ClientNotFound(t *testing.T) {
 	svc := download.NewService(db)
 	ctx := context.Background()
 
-	authorID := testutil.SeedAuthor(t, db, "Author")
-	bookID := testutil.SeedBook(t, db, authorID, "Book")
+	authorID := testutil.SeedAuthor(t, db,"Author")
+	bookID := testutil.SeedBook(t, db,authorID, "Book")
 	_, err := db.Exec(`INSERT INTO indexers (name, type, base_url, enabled) VALUES ('idx', 'newznab', 'http://x.com', 1)`)
 	require.NoError(t, err)
 	var indexerID int64
@@ -221,8 +222,8 @@ func TestSendGrab_DisabledClient(t *testing.T) {
 	svc := download.NewService(db)
 	ctx := context.Background()
 
-	authorID := testutil.SeedAuthor(t, db, "Author")
-	bookID := testutil.SeedBook(t, db, authorID, "Book")
+	authorID := testutil.SeedAuthor(t, db,"Author")
+	bookID := testutil.SeedBook(t, db,authorID, "Book")
 	_, err := db.Exec(`INSERT INTO indexers (name, type, base_url, enabled) VALUES ('idx', 'newznab', 'http://x.com', 1)`)
 	require.NoError(t, err)
 	var indexerID int64
@@ -252,8 +253,8 @@ func TestSendGrab_WithDirectClient(t *testing.T) {
 	svc := download.NewService(db)
 	ctx := context.Background()
 
-	authorID := testutil.SeedAuthor(t, db, "Author")
-	bookID := testutil.SeedBook(t, db, authorID, "Book")
+	authorID := testutil.SeedAuthor(t, db,"Author")
+	bookID := testutil.SeedBook(t, db,authorID, "Book")
 	_, err := db.Exec(`INSERT INTO indexers (name, type, base_url, enabled) VALUES ('idx', 'newznab', 'http://x.com', 1)`)
 	require.NoError(t, err)
 	var indexerID int64
@@ -290,8 +291,8 @@ func TestListGrabs_WithCompletedAt(t *testing.T) {
 	svc := download.NewService(db)
 	ctx := context.Background()
 
-	authorID := testutil.SeedAuthor(t, db, "Author")
-	bookID := testutil.SeedBook(t, db, authorID, "Book")
+	authorID := testutil.SeedAuthor(t, db,"Author")
+	bookID := testutil.SeedBook(t, db,authorID, "Book")
 	_, err := db.Exec(`INSERT INTO indexers (name, type, base_url, enabled) VALUES ('idx', 'newznab', 'http://x.com', 1)`)
 	require.NoError(t, err)
 	var indexerID int64
@@ -328,7 +329,7 @@ func TestGetDirectClient_Cached(t *testing.T) {
 	ctx := context.Background()
 
 	dir := t.TempDir()
-	testutil.SeedRootFolder(t, db, dir, "Library")
+	testutil.SeedRootFolder(t, db,dir, "Library")
 
 	c1, cfg1, err := svc.GetDirectClient(ctx)
 	require.NoError(t, err)
@@ -375,7 +376,7 @@ func TestCreateGrab_DBError(t *testing.T) {
 // openClosedDBForService is a package-level helper (mirrors openClosedDB in repository_test.go)
 // that works without *testing.T so it can be used in inline variable declarations.
 // It returns (nil, nil) on unexpected SQL open errors.
-func openClosedDBForService() (*sql.DB, error) {
+func openClosedDBForService() (*sqlx.DB, error) {
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		return nil, err
@@ -383,5 +384,5 @@ func openClosedDBForService() (*sql.DB, error) {
 	if err := db.Close(); err != nil {
 		return nil, err
 	}
-	return db, nil
+	return sqlx.NewDb(db, "sqlite"), nil
 }

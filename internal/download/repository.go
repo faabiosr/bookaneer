@@ -3,81 +3,37 @@ package download
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
-
-	"github.com/woliveiras/bookaneer/internal/database"
 )
 
-// clientScanner is an alias for database.Scanner (abstracts sql.Row and sql.Rows).
-type clientScanner = database.Scanner
-
-// scanClientConfig scans a full download_clients row (21 columns) into a ClientConfig.
-// Column order: id, name, type, host, port, use_tls, username, password, api_key,
-// category, recent_priority, older_priority, remove_completed_after,
-// enabled, priority, nzb_folder, torrent_folder, watch_folder, download_dir,
-// created_at, updated_at
-func scanClientConfig(s clientScanner) (ClientConfig, error) {
-	var cfg ClientConfig
-	var username, password, apiKey, category sql.NullString
-	var nzbFolder, torrentFolder, watchFolder, downloadDir sql.NullString
-
-	err := s.Scan(
-		&cfg.ID, &cfg.Name, &cfg.Type, &cfg.Host, &cfg.Port, &cfg.UseTLS,
-		&username, &password, &apiKey, &category,
-		&cfg.RecentPriority, &cfg.OlderPriority, &cfg.RemoveCompletedAfter,
-		&cfg.Enabled, &cfg.Priority, &nzbFolder, &torrentFolder, &watchFolder, &downloadDir,
-		&cfg.CreatedAt, &cfg.UpdatedAt,
-	)
-	if err != nil {
-		return cfg, err
-	}
-
-	cfg.Username = username.String
-	cfg.Password = password.String
-	cfg.APIKey = apiKey.String
-	cfg.Category = category.String
-	cfg.NzbFolder = nzbFolder.String
-	cfg.TorrentFolder = torrentFolder.String
-	cfg.WatchFolder = watchFolder.String
-	cfg.DownloadDir = downloadDir.String
-
-	return cfg, nil
-}
-
 const clientSelectColumns = `
-	SELECT id, name, type, host, port, use_tls, username, password, api_key, 
-	       category, recent_priority, older_priority, remove_completed_after, 
-	       enabled, priority, nzb_folder, torrent_folder, watch_folder, download_dir,
+	SELECT id, name, type, host, port, use_tls,
+	       COALESCE(username, '') as username, COALESCE(password, '') as password,
+	       COALESCE(api_key, '') as api_key, COALESCE(category, '') as category,
+	       recent_priority, older_priority, remove_completed_after,
+	       enabled, priority,
+	       COALESCE(nzb_folder, '') as nzb_folder, COALESCE(torrent_folder, '') as torrent_folder,
+	       COALESCE(watch_folder, '') as watch_folder, COALESCE(download_dir, '') as download_dir,
 	       created_at, updated_at
 	FROM download_clients
 `
 
 // ListClients returns all download clients from the database.
 func (s *Service) ListClients(ctx context.Context) ([]ClientConfig, error) {
-	rows, err := s.db.QueryContext(ctx, clientSelectColumns+`ORDER BY priority ASC, name ASC`)
-	if err != nil {
+	var clients []ClientConfig
+	if err := s.db.SelectContext(ctx, &clients, clientSelectColumns+`ORDER BY priority ASC, name ASC`); err != nil {
 		return nil, fmt.Errorf("query clients: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
-
-	var clients []ClientConfig
-	for rows.Next() {
-		cfg, err := scanClientConfig(rows)
-		if err != nil {
-			return nil, fmt.Errorf("scan client: %w", err)
-		}
-		clients = append(clients, cfg)
-	}
-
-	return clients, rows.Err()
+	return clients, nil
 }
 
 // GetClient returns a download client by ID.
 func (s *Service) GetClient(ctx context.Context, id int64) (*ClientConfig, error) {
-	row := s.db.QueryRowContext(ctx, clientSelectColumns+`WHERE id = ?`, id)
-	cfg, err := scanClientConfig(row)
-	if err == sql.ErrNoRows {
+	var cfg ClientConfig
+	err := s.db.GetContext(ctx, &cfg, clientSelectColumns+`WHERE id = ?`, id)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
@@ -90,22 +46,40 @@ func (s *Service) GetClient(ctx context.Context, id int64) (*ClientConfig, error
 func (s *Service) CreateClient(ctx context.Context, cfg *ClientConfig) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	query := `
+	result, err := s.db.NamedExecContext(ctx, `
 		INSERT INTO download_clients (
 			name, type, host, port, use_tls, username, password, api_key,
 			category, recent_priority, older_priority, remove_completed_after,
 			enabled, priority, nzb_folder, torrent_folder, watch_folder, download_dir,
 			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`
-
-	result, err := s.db.ExecContext(ctx, query,
-		cfg.Name, cfg.Type, cfg.Host, cfg.Port, cfg.UseTLS,
-		cfg.Username, cfg.Password, cfg.APIKey,
-		cfg.Category, cfg.RecentPriority, cfg.OlderPriority, cfg.RemoveCompletedAfter,
-		cfg.Enabled, cfg.Priority, cfg.NzbFolder, cfg.TorrentFolder,
-		cfg.WatchFolder, cfg.DownloadDir, now, now,
-	)
+		) VALUES (
+			:name, :type, :host, :port, :use_tls, :username, :password, :api_key,
+			:category, :recent_priority, :older_priority, :remove_completed_after,
+			:enabled, :priority, :nzb_folder, :torrent_folder, :watch_folder, :download_dir,
+			:created_at, :updated_at
+		)
+	`, map[string]any{
+		"name":                   cfg.Name,
+		"type":                   cfg.Type,
+		"host":                   cfg.Host,
+		"port":                   cfg.Port,
+		"use_tls":                cfg.UseTLS,
+		"username":               cfg.Username,
+		"password":               cfg.Password,
+		"api_key":                cfg.APIKey,
+		"category":               cfg.Category,
+		"recent_priority":        cfg.RecentPriority,
+		"older_priority":         cfg.OlderPriority,
+		"remove_completed_after": cfg.RemoveCompletedAfter,
+		"enabled":                cfg.Enabled,
+		"priority":               cfg.Priority,
+		"nzb_folder":             cfg.NzbFolder,
+		"torrent_folder":         cfg.TorrentFolder,
+		"watch_folder":           cfg.WatchFolder,
+		"download_dir":           cfg.DownloadDir,
+		"created_at":             now,
+		"updated_at":             now,
+	})
 	if err != nil {
 		return fmt.Errorf("insert client: %w", err)
 	}
@@ -125,23 +99,38 @@ func (s *Service) CreateClient(ctx context.Context, cfg *ClientConfig) error {
 func (s *Service) UpdateClient(ctx context.Context, cfg *ClientConfig) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	query := `
+	result, err := s.db.NamedExecContext(ctx, `
 		UPDATE download_clients SET
-			name = ?, type = ?, host = ?, port = ?, use_tls = ?,
-			username = ?, password = ?, api_key = ?, category = ?,
-			recent_priority = ?, older_priority = ?, remove_completed_after = ?,
-			enabled = ?, priority = ?, nzb_folder = ?, torrent_folder = ?,
-			watch_folder = ?, download_dir = ?, updated_at = ?
-		WHERE id = ?
-	`
-
-	result, err := s.db.ExecContext(ctx, query,
-		cfg.Name, cfg.Type, cfg.Host, cfg.Port, cfg.UseTLS,
-		cfg.Username, cfg.Password, cfg.APIKey,
-		cfg.Category, cfg.RecentPriority, cfg.OlderPriority, cfg.RemoveCompletedAfter,
-		cfg.Enabled, cfg.Priority, cfg.NzbFolder, cfg.TorrentFolder,
-		cfg.WatchFolder, cfg.DownloadDir, now, cfg.ID,
-	)
+			name = :name, type = :type, host = :host, port = :port, use_tls = :use_tls,
+			username = :username, password = :password, api_key = :api_key, category = :category,
+			recent_priority = :recent_priority, older_priority = :older_priority,
+			remove_completed_after = :remove_completed_after,
+			enabled = :enabled, priority = :priority, nzb_folder = :nzb_folder,
+			torrent_folder = :torrent_folder, watch_folder = :watch_folder,
+			download_dir = :download_dir, updated_at = :updated_at
+		WHERE id = :id
+	`, map[string]any{
+		"name":                   cfg.Name,
+		"type":                   cfg.Type,
+		"host":                   cfg.Host,
+		"port":                   cfg.Port,
+		"use_tls":                cfg.UseTLS,
+		"username":               cfg.Username,
+		"password":               cfg.Password,
+		"api_key":                cfg.APIKey,
+		"category":               cfg.Category,
+		"recent_priority":        cfg.RecentPriority,
+		"older_priority":         cfg.OlderPriority,
+		"remove_completed_after": cfg.RemoveCompletedAfter,
+		"enabled":                cfg.Enabled,
+		"priority":               cfg.Priority,
+		"nzb_folder":             cfg.NzbFolder,
+		"torrent_folder":         cfg.TorrentFolder,
+		"watch_folder":           cfg.WatchFolder,
+		"download_dir":           cfg.DownloadDir,
+		"updated_at":             now,
+		"id":                     cfg.ID,
+	})
 	if err != nil {
 		return fmt.Errorf("update client: %w", err)
 	}

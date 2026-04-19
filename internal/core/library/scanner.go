@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/woliveiras/bookaneer/internal/core/mediafile"
 )
 
@@ -36,18 +37,18 @@ type ScanResult struct {
 
 // Scanner scans the library for ebook files.
 type Scanner struct {
-	db *sql.DB
+	db *sqlx.DB
 }
 
 // NewScanner creates a new library scanner.
-func NewScanner(db *sql.DB) *Scanner {
+func NewScanner(db *sqlx.DB) *Scanner {
 	return &Scanner{db: db}
 }
 
 // ScanRootFolder scans a root folder for ebook files.
 func (s *Scanner) ScanRootFolder(ctx context.Context, rootFolderID int64) (*ScanResult, error) {
 	var rootPath string
-	err := s.db.QueryRowContext(ctx, "SELECT path FROM root_folders WHERE id = ?", rootFolderID).Scan(&rootPath)
+	err := s.db.GetContext(ctx, &rootPath, "SELECT path FROM root_folders WHERE id = ?", rootFolderID)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("root folder not found")
 	}
@@ -139,7 +140,7 @@ func (s *Scanner) ScanPath(ctx context.Context, rootPath string) (*ScanResult, e
 // ScanAuthorFolder scans a specific author folder.
 func (s *Scanner) ScanAuthorFolder(ctx context.Context, authorID int64) (*ScanResult, error) {
 	var authorPath string
-	err := s.db.QueryRowContext(ctx, "SELECT path FROM authors WHERE id = ?", authorID).Scan(&authorPath)
+	err := s.db.GetContext(ctx, &authorPath, "SELECT path FROM authors WHERE id = ?", authorID)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("author not found")
 	}
@@ -179,10 +180,18 @@ func (s *Scanner) addNewFile(ctx context.Context, rootPath, filePath string) err
 		bookID = &discoveredID
 	}
 
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.db.NamedExecContext(ctx, `
 		INSERT INTO book_files (book_id, path, relative_path, size, format, quality, hash)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, bookID, filePath, relativePath, info.Size(), format, format, hash)
+		VALUES (:book_id, :path, :relative_path, :size, :format, :quality, :hash)
+	`, map[string]any{
+		"book_id":       bookID,
+		"path":          filePath,
+		"relative_path": relativePath,
+		"size":          info.Size(),
+		"format":        format,
+		"quality":       format,
+		"hash":          hash,
+	})
 	if err != nil {
 		return fmt.Errorf("insert file: %w", err)
 	}
@@ -197,7 +206,7 @@ func (s *Scanner) updateFileIfChanged(ctx context.Context, filePath string) erro
 	}
 
 	var storedSize int64
-	err = s.db.QueryRowContext(ctx, "SELECT size FROM book_files WHERE path = ?", filePath).Scan(&storedSize)
+	err = s.db.GetContext(ctx, &storedSize, "SELECT size FROM book_files WHERE path = ?", filePath)
 	if err != nil {
 		return fmt.Errorf("get stored size: %w", err)
 	}
@@ -211,9 +220,13 @@ func (s *Scanner) updateFileIfChanged(ctx context.Context, filePath string) erro
 		hash, _ = hashFile(filePath)
 	}
 
-	_, err = s.db.ExecContext(ctx, `
-		UPDATE book_files SET size = ?, hash = ? WHERE path = ?
-	`, info.Size(), hash, filePath)
+	_, err = s.db.NamedExecContext(ctx, `
+		UPDATE book_files SET size = :size, hash = :hash WHERE path = :path
+	`, map[string]any{
+		"size": info.Size(),
+		"hash": hash,
+		"path": filePath,
+	})
 	if err != nil {
 		return fmt.Errorf("update file: %w", err)
 	}
@@ -236,23 +249,23 @@ func (s *Scanner) matchFileToBook(ctx context.Context, filePath string) (*int64,
 	baseName := strings.TrimSuffix(fileName, ext)
 
 	var bookID int64
-	err := s.db.QueryRowContext(ctx, `
+	err := s.db.GetContext(ctx, &bookID, `
 		SELECT b.id FROM books b
 		JOIN authors a ON b.author_id = a.id
 		WHERE (b.title = ? OR b.sort_title = ?)
 		AND a.path = ?
 		LIMIT 1
-	`, baseName, baseName, dir).Scan(&bookID)
+	`, baseName, baseName, dir)
 	if err == sql.ErrNoRows {
 		bookDir := filepath.Base(dir)
 		authorDir := filepath.Dir(dir)
-		err = s.db.QueryRowContext(ctx, `
+		err = s.db.GetContext(ctx, &bookID, `
 			SELECT b.id FROM books b
 			JOIN authors a ON b.author_id = a.id
 			WHERE (b.title = ? OR b.sort_title = ?)
 			AND a.path = ?
 			LIMIT 1
-		`, bookDir, bookDir, authorDir).Scan(&bookID)
+		`, bookDir, bookDir, authorDir)
 		if err != nil {
 			return nil, err
 		}
@@ -337,9 +350,8 @@ func parsePathForBookInfo(rootPath, filePath string) (authorName, bookTitle stri
 
 func (s *Scanner) findOrCreateAuthor(ctx context.Context, name, rootPath string) (int64, error) {
 	var authorID int64
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id FROM authors WHERE LOWER(name) = LOWER(?) LIMIT 1`, name,
-	).Scan(&authorID)
+	err := s.db.GetContext(ctx, &authorID,
+		`SELECT id FROM authors WHERE LOWER(name) = LOWER(?) LIMIT 1`, name)
 	if err == nil {
 		return authorID, nil
 	}
@@ -348,16 +360,19 @@ func (s *Scanner) findOrCreateAuthor(ctx context.Context, name, rootPath string)
 	}
 
 	authorPath := filepath.Join(rootPath, name)
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.db.NamedExecContext(ctx, `
 		INSERT INTO authors (name, sort_name, status, monitored, path)
-		VALUES (?, ?, 'active', 1, ?)
-	`, name, makeSortName(name), authorPath)
+		VALUES (:name, :sort_name, 'active', 1, :path)
+	`, map[string]any{
+		"name":      name,
+		"sort_name": makeSortName(name),
+		"path":      authorPath,
+	})
 	if err != nil {
 		// UNIQUE race: author may have been created concurrently.
 		if strings.Contains(err.Error(), "UNIQUE") {
-			if err2 := s.db.QueryRowContext(ctx,
-				`SELECT id FROM authors WHERE LOWER(name) = LOWER(?) LIMIT 1`, name,
-			).Scan(&authorID); err2 == nil {
+			if err2 := s.db.GetContext(ctx, &authorID,
+				`SELECT id FROM authors WHERE LOWER(name) = LOWER(?) LIMIT 1`, name); err2 == nil {
 				return authorID, nil
 			}
 		}
@@ -375,11 +390,11 @@ func (s *Scanner) findOrCreateAuthor(ctx context.Context, name, rootPath string)
 
 func (s *Scanner) findOrCreateBook(ctx context.Context, authorID int64, title, filePath string) (int64, error) {
 	var bookID int64
-	err := s.db.QueryRowContext(ctx, `
+	err := s.db.GetContext(ctx, &bookID, `
 		SELECT id FROM books
 		WHERE author_id = ? AND (LOWER(title) = LOWER(?) OR LOWER(sort_title) = LOWER(?))
 		LIMIT 1
-	`, authorID, title, title).Scan(&bookID)
+	`, authorID, title, title)
 	if err == nil {
 		return bookID, nil
 	}
@@ -396,10 +411,15 @@ func (s *Scanner) findOrCreateBook(ctx context.Context, authorID int64, title, f
 		}
 	}
 
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.db.NamedExecContext(ctx, `
 		INSERT INTO books (author_id, title, sort_title, isbn, monitored)
-		VALUES (?, ?, ?, ?, 1)
-	`, authorID, title, title, isbn)
+		VALUES (:author_id, :title, :sort_title, :isbn, 1)
+	`, map[string]any{
+		"author_id":  authorID,
+		"title":      title,
+		"sort_title": title,
+		"isbn":       isbn,
+	})
 	if err != nil {
 		return 0, fmt.Errorf("create book: %w", err)
 	}

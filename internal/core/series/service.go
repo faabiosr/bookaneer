@@ -6,35 +6,34 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/woliveiras/bookaneer/internal/database"
 )
 
 // Service provides series-related operations.
 type Service struct {
-	db *sql.DB
+	db *sqlx.DB
 }
 
 // New creates a new series service.
-func New(db *sql.DB) *Service {
+func New(db *sqlx.DB) *Service {
 	return &Service{db: db}
 }
 
 // FindByID returns a series by ID.
 func (s *Service) FindByID(ctx context.Context, id int64) (*Series, error) {
 	var ser Series
-	var monitored int
-	err := s.db.QueryRowContext(ctx, `
+	err := s.db.GetContext(ctx, &ser, `
 		SELECT s.id, s.foreign_id, s.title, s.description, s.monitored,
-		       (SELECT COUNT(*) FROM series_books sb WHERE sb.series_id = s.id) as book_count
+		       (SELECT COUNT(*) FROM series_books sb WHERE sb.series_id = s.id) AS book_count
 		FROM series s WHERE s.id = ?
-	`, id).Scan(&ser.ID, &ser.ForeignID, &ser.Title, &ser.Description, &monitored, &ser.BookCount)
+	`, id)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("find series %d: %w", id, err)
 	}
-	ser.Monitored = monitored == 1
 	return &ser, nil
 }
 
@@ -60,7 +59,7 @@ func (s *Service) List(ctx context.Context, filter ListSeriesFilter) ([]Series, 
 	// Count total
 	var total int
 	countQuery := "SELECT COUNT(*) FROM series " + where
-	if err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+	if err := s.db.GetContext(ctx, &total, countQuery, args...); err != nil {
 		return nil, 0, fmt.Errorf("count series: %w", err)
 	}
 
@@ -75,29 +74,14 @@ func (s *Service) List(ctx context.Context, filter ListSeriesFilter) ([]Series, 
 
 	query := fmt.Sprintf(`
 		SELECT s.id, s.foreign_id, s.title, s.description, s.monitored,
-		       (SELECT COUNT(*) FROM series_books sb WHERE sb.series_id = s.id) as book_count
+		       (SELECT COUNT(*) FROM series_books sb WHERE sb.series_id = s.id) AS book_count
 		FROM series s %s ORDER BY %s %s LIMIT ? OFFSET ?
 	`, where, sortBy, sortDir)
 	args = append(args, limit, offset)
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, 0, fmt.Errorf("list series: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
 	var seriesList []Series
-	for rows.Next() {
-		var ser Series
-		var monitored int
-		if err := rows.Scan(&ser.ID, &ser.ForeignID, &ser.Title, &ser.Description, &monitored, &ser.BookCount); err != nil {
-			return nil, 0, fmt.Errorf("scan series: %w", err)
-		}
-		ser.Monitored = monitored == 1
-		seriesList = append(seriesList, ser)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, 0, fmt.Errorf("iterate series: %w", err)
+	if err := s.db.SelectContext(ctx, &seriesList, query, args...); err != nil {
+		return nil, 0, fmt.Errorf("list series: %w", err)
 	}
 
 	return seriesList, total, nil
@@ -114,10 +98,15 @@ func (s *Service) Create(ctx context.Context, input CreateSeriesInput) (*Series,
 		monitored = 1
 	}
 
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.db.NamedExecContext(ctx, `
 		INSERT INTO series (foreign_id, title, description, monitored)
-		VALUES (?, ?, ?, ?)
-	`, input.ForeignID, input.Title, input.Description, monitored)
+		VALUES (:foreign_id, :title, :description, :monitored)
+	`, map[string]any{
+		"foreign_id":   input.ForeignID,
+		"title":        input.Title,
+		"description":  input.Description,
+		"monitored":    monitored,
+	})
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			return nil, ErrDuplicate

@@ -2,12 +2,12 @@ package rootfolder
 
 // RootFolder represents a root folder for the library.
 type RootFolder struct {
-	ID                      int64  `json:"id"`
-	Path                    string `json:"path"`
-	Name                    string `json:"name"`
-	DefaultQualityProfileID *int64 `json:"defaultQualityProfileId,omitempty"`
+	ID                      int64  `json:"id"                              db:"id"`
+	Path                    string `json:"path"                            db:"path"`
+	Name                    string `json:"name"                            db:"name"`
+	DefaultQualityProfileID *int64 `json:"defaultQualityProfileId,omitempty" db:"default_quality_profile_id"`
 
-	// Computed fields
+	// Computed fields (not stored in DB)
 	FreeSpace   int64 `json:"freeSpace,omitempty"`
 	TotalSpace  int64 `json:"totalSpace,omitempty"`
 	AuthorCount int   `json:"authorCount,omitempty"`

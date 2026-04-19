@@ -19,47 +19,18 @@ func (s *Service) GetWithEditions(ctx context.Context, id int64) (*BookWithEditi
 		Files:    []BookFile{},
 	}
 
-	// Get editions
-	rows, err := s.db.QueryContext(ctx, `
+	if err := s.db.SelectContext(ctx, &result.Editions, `
 		SELECT id, book_id, foreign_id, title, isbn, isbn13, format, publisher, release_date, page_count, language, monitored
 		FROM editions WHERE book_id = ?
-	`, id)
-	if err != nil {
+	`, id); err != nil {
 		return nil, fmt.Errorf("get editions: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
 
-	for rows.Next() {
-		var e Edition
-		var monitored int
-		if err := rows.Scan(
-			&e.ID, &e.BookID, &e.ForeignID, &e.Title, &e.ISBN, &e.ISBN13,
-			&e.Format, &e.Publisher, &e.ReleaseDate, &e.PageCount, &e.Language, &monitored,
-		); err != nil {
-			return nil, fmt.Errorf("scan edition: %w", err)
-		}
-		e.Monitored = monitored == 1
-		result.Editions = append(result.Editions, e)
-	}
-
-	// Get files
-	fileRows, err := s.db.QueryContext(ctx, `
+	if err := s.db.SelectContext(ctx, &result.Files, `
 		SELECT id, book_id, edition_id, path, relative_path, size, format, quality, hash, added_at, content_mismatch
 		FROM book_files WHERE book_id = ?
-	`, id)
-	if err != nil {
+	`, id); err != nil {
 		return nil, fmt.Errorf("get book files: %w", err)
-	}
-	defer func() { _ = fileRows.Close() }()
-
-	for fileRows.Next() {
-		var f BookFile
-		if err := fileRows.Scan(
-			&f.ID, &f.BookID, &f.EditionID, &f.Path, &f.RelativePath, &f.Size, &f.Format, &f.Quality, &f.Hash, &f.AddedAt, &f.ContentMismatch,
-		); err != nil {
-			return nil, fmt.Errorf("scan book file: %w", err)
-		}
-		result.Files = append(result.Files, f)
 	}
 
 	return result, nil
@@ -82,10 +53,22 @@ func (s *Service) CreateEdition(ctx context.Context, input CreateEditionInput) (
 		monitored = 1
 	}
 
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.db.NamedExecContext(ctx, `
 		INSERT INTO editions (book_id, foreign_id, title, isbn, isbn13, format, publisher, release_date, page_count, language, monitored)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, input.BookID, input.ForeignID, input.Title, input.ISBN, input.ISBN13, input.Format, input.Publisher, input.ReleaseDate, input.PageCount, input.Language, monitored)
+		VALUES (:book_id, :foreign_id, :title, :isbn, :isbn13, :format, :publisher, :release_date, :page_count, :language, :monitored)
+	`, map[string]any{
+		"book_id":      input.BookID,
+		"foreign_id":   input.ForeignID,
+		"title":        input.Title,
+		"isbn":         input.ISBN,
+		"isbn13":       input.ISBN13,
+		"format":       input.Format,
+		"publisher":    input.Publisher,
+		"release_date": input.ReleaseDate,
+		"page_count":   input.PageCount,
+		"language":     input.Language,
+		"monitored":    monitored,
+	})
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			return nil, ErrDuplicate
@@ -99,18 +82,13 @@ func (s *Service) CreateEdition(ctx context.Context, input CreateEditionInput) (
 	}
 
 	var e Edition
-	var mon int
-	err = s.db.QueryRowContext(ctx, `
+	err = s.db.GetContext(ctx, &e, `
 		SELECT id, book_id, foreign_id, title, isbn, isbn13, format, publisher, release_date, page_count, language, monitored
 		FROM editions WHERE id = ?
-	`, id).Scan(
-		&e.ID, &e.BookID, &e.ForeignID, &e.Title, &e.ISBN, &e.ISBN13,
-		&e.Format, &e.Publisher, &e.ReleaseDate, &e.PageCount, &e.Language, &mon,
-	)
+	`, id)
 	if err != nil {
 		return nil, fmt.Errorf("get created edition: %w", err)
 	}
-	e.Monitored = mon == 1
 
 	return &e, nil
 }

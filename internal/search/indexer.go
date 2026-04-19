@@ -64,33 +64,33 @@ type Category struct {
 
 // IndexerConfig holds the configuration for an indexer.
 type IndexerConfig struct {
-	ID                      int64    `json:"id"`
-	Name                    string   `json:"name"`
-	Type                    string   `json:"type"`
-	BaseURL                 string   `json:"baseUrl"`
-	APIPath                 string   `json:"apiPath"`
-	APIKey                  string   `json:"apiKey"`
-	Categories              string   `json:"categories"`
-	Priority                int      `json:"priority"`
-	Enabled                 bool     `json:"enabled"`
-	EnableRSS               bool     `json:"enableRss"`
-	EnableAutomaticSearch   bool     `json:"enableAutomaticSearch"`
-	EnableInteractiveSearch bool     `json:"enableInteractiveSearch"`
-	AdditionalParameters    string   `json:"additionalParameters"`
-	MinimumSeeders          int      `json:"minimumSeeders"`      // Torznab only
-	SeedRatio               *float64 `json:"seedRatio,omitempty"` // Torznab only, nil = use client default
-	SeedTime                *int     `json:"seedTime,omitempty"`  // Torznab only, minutes, nil = use client default
-	CreatedAt               string   `json:"createdAt"`
-	UpdatedAt               string   `json:"updatedAt"`
+	ID                      int64    `json:"id"                      db:"id"`
+	Name                    string   `json:"name"                    db:"name"`
+	Type                    string   `json:"type"                    db:"type"`
+	BaseURL                 string   `json:"baseUrl"                 db:"base_url"`
+	APIPath                 string   `json:"apiPath"                 db:"api_path"`
+	APIKey                  string   `json:"apiKey"                  db:"api_key"`
+	Categories              string   `json:"categories"              db:"categories"`
+	Priority                int      `json:"priority"                db:"priority"`
+	Enabled                 bool     `json:"enabled"                 db:"enabled"`
+	EnableRSS               bool     `json:"enableRss"               db:"enable_rss"`
+	EnableAutomaticSearch   bool     `json:"enableAutomaticSearch"   db:"enable_automatic_search"`
+	EnableInteractiveSearch bool     `json:"enableInteractiveSearch" db:"enable_interactive_search"`
+	AdditionalParameters    string   `json:"additionalParameters"    db:"additional_parameters"`
+	MinimumSeeders          int      `json:"minimumSeeders"          db:"minimum_seeders"`      // Torznab only
+	SeedRatio               *float64 `json:"seedRatio,omitempty"     db:"seed_ratio"`           // Torznab only, nil = use client default
+	SeedTime                *int     `json:"seedTime,omitempty"      db:"seed_time"`            // Torznab only, minutes, nil = use client default
+	CreatedAt               string   `json:"createdAt"               db:"created_at"`
+	UpdatedAt               string   `json:"updatedAt"               db:"updated_at"`
 }
 
 // IndexerOptions holds global indexer settings.
 type IndexerOptions struct {
-	MinimumAge         int    `json:"minimumAge"`         // Minutes (Usenet: min age before grab)
-	Retention          int    `json:"retention"`          // Days (Usenet: 0 = unlimited)
-	MaximumSize        int    `json:"maximumSize"`        // MB (0 = unlimited)
-	RSSSyncInterval    int    `json:"rssSyncInterval"`    // Minutes (0 = disabled)
-	PreferIndexerFlags bool   `json:"preferIndexerFlags"` // Prioritize releases with special flags
-	AvailabilityDelay  int    `json:"availabilityDelay"`  // Days
-	UpdatedAt          string `json:"updatedAt"`
+	MinimumAge         int    `json:"minimumAge"         db:"minimum_age"`         // Minutes (Usenet: min age before grab)
+	Retention          int    `json:"retention"          db:"retention"`           // Days (Usenet: 0 = unlimited)
+	MaximumSize        int    `json:"maximumSize"        db:"maximum_size"`        // MB (0 = unlimited)
+	RSSSyncInterval    int    `json:"rssSyncInterval"    db:"rss_sync_interval"`   // Minutes (0 = disabled)
+	PreferIndexerFlags bool   `json:"preferIndexerFlags" db:"prefer_indexer_flags"` // Prioritize releases with special flags
+	AvailabilityDelay  int    `json:"availabilityDelay"  db:"availability_delay"`  // Days
+	UpdatedAt          string `json:"updatedAt"          db:"updated_at"`
 }

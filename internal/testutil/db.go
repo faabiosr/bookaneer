@@ -1,7 +1,6 @@
 package testutil
 
 import (
-	"database/sql"
 	"testing"
 
 	"github.com/jmoiron/sqlx"
@@ -13,10 +12,10 @@ import (
 
 // OpenTestDB creates an in-memory SQLite database with all migrations applied.
 // The database is closed automatically when the test finishes.
-func OpenTestDB(t *testing.T) *sql.DB {
+func OpenTestDB(t *testing.T) *sqlx.DB {
 	t.Helper()
 
-	db, err := sql.Open("sqlite", ":memory:")
+	db, err := sqlx.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("open test db: %v", err)
 	}
@@ -33,7 +32,7 @@ func OpenTestDB(t *testing.T) *sql.DB {
 	if err := goose.SetDialect("sqlite3"); err != nil {
 		t.Fatalf("set dialect: %v", err)
 	}
-	if err := goose.Up(db, "migrations"); err != nil {
+	if err := goose.Up(db.DB, "migrations"); err != nil {
 		t.Fatalf("run migrations: %v", err)
 	}
 
@@ -48,14 +47,8 @@ func OpenTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
-// OpenTestDBX wraps OpenTestDB with sqlx, using the sqlite driver name.
-func OpenTestDBX(t *testing.T) *sqlx.DB {
-	t.Helper()
-	return sqlx.NewDb(OpenTestDB(t), "sqlite")
-}
-
 // SeedAuthor inserts a test author and returns its ID.
-func SeedAuthor(t *testing.T, db *sql.DB, name string) int64 {
+func SeedAuthor(t *testing.T, db *sqlx.DB, name string) int64 {
 	t.Helper()
 	result, err := db.Exec(`
 		INSERT INTO authors (name, sort_name, monitored, path)
@@ -69,7 +62,7 @@ func SeedAuthor(t *testing.T, db *sql.DB, name string) int64 {
 }
 
 // SeedBook inserts a test book and returns its ID.
-func SeedBook(t *testing.T, db *sql.DB, authorID int64, title string) int64 {
+func SeedBook(t *testing.T, db *sqlx.DB, authorID int64, title string) int64 {
 	t.Helper()
 	result, err := db.Exec(`
 		INSERT INTO books (author_id, title, sort_title, monitored)
@@ -83,7 +76,7 @@ func SeedBook(t *testing.T, db *sql.DB, authorID int64, title string) int64 {
 }
 
 // SeedRootFolder inserts a test root folder and returns its ID.
-func SeedRootFolder(t *testing.T, db *sql.DB, path, name string) int64 {
+func SeedRootFolder(t *testing.T, db *sqlx.DB, path, name string) int64 {
 	t.Helper()
 	result, err := db.Exec(`
 		INSERT INTO root_folders (path, name)
@@ -97,7 +90,7 @@ func SeedRootFolder(t *testing.T, db *sql.DB, path, name string) int64 {
 }
 
 // SeedQueueItem inserts a download queue item and returns its ID.
-func SeedQueueItem(t *testing.T, db *sql.DB, bookID int64, title, status string) int64 {
+func SeedQueueItem(t *testing.T, db *sqlx.DB, bookID int64, title, status string) int64 {
 	t.Helper()
 	result, err := db.Exec(`
 		INSERT INTO download_queue (book_id, title, size, format, status, download_url, external_id)

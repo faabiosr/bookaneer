@@ -11,6 +11,8 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/jmoiron/sqlx"
 )
 
 // Channel is implemented by each notification provider (webhook, etc.).
@@ -94,13 +96,13 @@ type ChannelFactory func(cfg Config) (Channel, error)
 
 // Service manages notification configurations and dispatches events.
 type Service struct {
-	db        *sql.DB
+	db        *sqlx.DB
 	mu        sync.RWMutex
 	factories map[string]ChannelFactory
 }
 
 // New creates a new notification Service.
-func New(db *sql.DB) *Service {
+func New(db *sqlx.DB) *Service {
 	return &Service{
 		db:        db,
 		factories: make(map[string]ChannelFactory),
@@ -172,10 +174,18 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*Config, error
 	if settings == nil {
 		settings = json.RawMessage("{}")
 	}
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.db.NamedExecContext(ctx, `
 		INSERT INTO notifications (name, type, settings, on_grab, on_download, on_upgrade, enabled)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, input.Name, input.Type, string(settings), boolToInt(input.OnGrab), boolToInt(input.OnDownload), boolToInt(input.OnUpgrade), boolToInt(input.Enabled))
+		VALUES (:name, :type, :settings, :on_grab, :on_download, :on_upgrade, :enabled)
+	`, map[string]any{
+		"name":        input.Name,
+		"type":        input.Type,
+		"settings":    string(settings),
+		"on_grab":     boolToInt(input.OnGrab),
+		"on_download": boolToInt(input.OnDownload),
+		"on_upgrade":  boolToInt(input.OnUpgrade),
+		"enabled":     boolToInt(input.Enabled),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("create notification: %w", err)
 	}
@@ -211,12 +221,21 @@ func (s *Service) Update(ctx context.Context, id int64, input UpdateInput) (*Con
 		existing.Enabled = *input.Enabled
 	}
 
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.db.NamedExecContext(ctx, `
 		UPDATE notifications
-		SET name = ?, type = ?, settings = ?, on_grab = ?, on_download = ?, on_upgrade = ?, enabled = ?
-		WHERE id = ?
-	`, existing.Name, existing.Type, string(existing.Settings),
-		boolToInt(existing.OnGrab), boolToInt(existing.OnDownload), boolToInt(existing.OnUpgrade), boolToInt(existing.Enabled), id)
+		SET name = :name, type = :type, settings = :settings,
+		    on_grab = :on_grab, on_download = :on_download, on_upgrade = :on_upgrade, enabled = :enabled
+		WHERE id = :id
+	`, map[string]any{
+		"name":        existing.Name,
+		"type":        existing.Type,
+		"settings":    string(existing.Settings),
+		"on_grab":     boolToInt(existing.OnGrab),
+		"on_download": boolToInt(existing.OnDownload),
+		"on_upgrade":  boolToInt(existing.OnUpgrade),
+		"enabled":     boolToInt(existing.Enabled),
+		"id":          id,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("update notification %d: %w", id, err)
 	}

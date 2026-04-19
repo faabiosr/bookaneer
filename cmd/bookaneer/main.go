@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"flag"
 	"fmt"
@@ -15,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
@@ -150,7 +150,7 @@ func run() error {
 }
 
 // setupDatabase opens the database and runs migrations.
-func setupDatabase(cfg *config.Config) (*sql.DB, error) {
+func setupDatabase(cfg *config.Config) (*sqlx.DB, error) {
 	db, err := database.Open(cfg.DatabasePath())
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
@@ -163,7 +163,7 @@ func setupDatabase(cfg *config.Config) (*sql.DB, error) {
 }
 
 // setupAuth initialises the auth service, ensures the API key and default admin exist.
-func setupAuth(db *sql.DB, cfg *config.Config) (*auth.Service, error) {
+func setupAuth(db *sqlx.DB, cfg *config.Config) (*auth.Service, error) {
 	ctx := context.Background()
 	authSvc := auth.New(db)
 
@@ -229,7 +229,7 @@ func setupEcho(authSvc *auth.Service) *echo.Echo {
 }
 
 // registerRoutes wires all API handlers to the given router group.
-func registerRoutes(e *echo.Echo, api *echo.Group, db *sql.DB, cfg *config.Config, authSvc *auth.Service) error {
+func registerRoutes(e *echo.Echo, api *echo.Group, db *sqlx.DB, cfg *config.Config, authSvc *auth.Service) error {
 	ctx := context.Background()
 
 	// Public endpoints (registered on Echo, not on api group, to avoid
@@ -255,7 +255,7 @@ func registerRoutes(e *echo.Echo, api *echo.Group, db *sql.DB, cfg *config.Confi
 	settingsHandler.Register(protected)
 
 	// Core domain services + handlers
-	authorSvc := author.New(database.OpenX(db))
+	authorSvc := author.New(db)
 	bookSvc := book.New(db)
 	seriesSvc := series.New(db)
 	rootFolderSvc := rootfolder.New(db)

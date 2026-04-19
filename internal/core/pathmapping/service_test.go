@@ -10,6 +10,7 @@ import (
 	"github.com/woliveiras/bookaneer/internal/testutil"
 )
 
+
 func TestNew(t *testing.T) {
 	db := testutil.OpenTestDB(t)
 	svc := pathmapping.New(db)

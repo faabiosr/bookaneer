@@ -2,7 +2,6 @@ package wanted
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log/slog"
 	"os"
@@ -31,33 +30,20 @@ func (s *Service) ProcessDownloads(ctx context.Context) (*ProcessDownloadsResult
 	}
 
 	// Get active downloads (queued, downloading, paused)
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT q.id, q.download_client_id, q.external_id, q.status
-		FROM download_queue q
-		WHERE q.status IN ('queued', 'downloading', 'paused', 'sent')
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("query active downloads: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
 	type activeDownload struct {
-		ID       int64
-		ClientID sql.NullInt64
-		ExtID    string
-		Status   string
+		ID       int64  `db:"id"`
+		ClientID *int64 `db:"download_client_id"`
+		ExtID    string `db:"external_id"`
+		Status   string `db:"status"`
 	}
 
 	var downloads []activeDownload
-	for rows.Next() {
-		var d activeDownload
-		if err := rows.Scan(&d.ID, &d.ClientID, &d.ExtID, &d.Status); err != nil {
-			continue
-		}
-		downloads = append(downloads, d)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate downloads: %w", err)
+	if err := s.db.SelectContext(ctx, &downloads, `
+		SELECT q.id, q.download_client_id, q.external_id, q.status
+		FROM download_queue q
+		WHERE q.status IN ('queued', 'downloading', 'paused', 'sent')
+	`); err != nil {
+		return nil, fmt.Errorf("query active downloads: %w", err)
 	}
 
 	result.Checked = len(downloads)
@@ -150,43 +136,28 @@ func (s *Service) ProcessDownloads(ctx context.Context) (*ProcessDownloadsResult
 func (s *Service) importPendingCompletedDownloads(ctx context.Context) (int, error) {
 	// Find completed downloads with save_path that haven't been imported yet
 	// (not imported = no entry in book_files for that book_id)
-	rows, err := s.db.QueryContext(ctx, `
+	// Collect all pending imports first, then process after rows are closed.
+	// This avoids SQLite lock issues when doing writes during iteration.
+	type pendingImport struct {
+		QueueID  int64  `db:"id"`
+		BookID   int64  `db:"book_id"`
+		SavePath string `db:"save_path"`
+	}
+	var pending []pendingImport
+	if err := s.db.SelectContext(ctx, &pending, `
 		SELECT q.id, q.book_id, q.save_path
 		FROM download_queue q
 		WHERE q.status = 'completed'
 		  AND q.save_path != ''
 		  AND NOT EXISTS (SELECT 1 FROM book_files bf WHERE bf.book_id = q.book_id)
-	`)
-	if err != nil {
+	`); err != nil {
 		return 0, fmt.Errorf("query pending imports: %w", err)
 	}
-
-	// Collect all pending imports first, then close rows before processing
-	// This avoids SQLite lock issues when doing writes during iteration
-	type pendingImport struct {
-		queueID  int64
-		bookID   int64
-		savePath string
-	}
-	var pending []pendingImport
-	for rows.Next() {
-		var p pendingImport
-		if err := rows.Scan(&p.queueID, &p.bookID, &p.savePath); err != nil {
-			slog.Warn("Failed to scan pending import", "error", err)
-			continue
-		}
-		pending = append(pending, p)
-	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return 0, fmt.Errorf("iterate pending imports: %w", err)
-	}
-	_ = rows.Close() // Close before processing to avoid SQLite locks
 
 	var imported int
 	for _, p := range pending {
 		// Apply remote path mapping before checking file existence
-		localPath := p.savePath
+		localPath := p.SavePath
 		if s.pathMapper != nil {
 			localPath = s.pathMapper.MapPath(ctx, localPath)
 		}
@@ -194,24 +165,24 @@ func (s *Service) importPendingCompletedDownloads(ctx context.Context) (int, err
 		// Check if file still exists
 		if _, err := os.Stat(localPath); os.IsNotExist(err) {
 			slog.Warn("Download file no longer exists, marking as failed",
-				"queueId", p.queueID,
+				"queueId", p.QueueID,
 				"path", localPath,
 			)
-			_ = s.UpdateQueueItemStatus(ctx, p.queueID, "failed", 0)
+			_ = s.UpdateQueueItemStatus(ctx, p.QueueID, "failed", 0)
 			continue
 		}
 
 		// Import the download
-		if _, err := s.importCompletedDownload(ctx, p.queueID, p.savePath); err != nil {
+		if _, err := s.importCompletedDownload(ctx, p.QueueID, p.SavePath); err != nil {
 			slog.Warn("Failed to import pending download",
-				"queueId", p.queueID,
-				"path", p.savePath,
+				"queueId", p.QueueID,
+				"path", p.SavePath,
 				"error", err,
 			)
 		} else {
 			slog.Info("Successfully imported pending download",
-				"queueId", p.queueID,
-				"path", p.savePath,
+				"queueId", p.QueueID,
+				"path", p.SavePath,
 			)
 			imported++
 		}

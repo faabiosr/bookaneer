@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"testing"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/woliveiras/bookaneer/internal/download"
@@ -12,13 +13,13 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// openClosedDB returns an already-closed *sql.DB so every operation returns an error.
-func openClosedDB(t *testing.T) *sql.DB {
+// openClosedDB returns an already-closed *sqlx.DB so every operation returns an error.
+func openClosedDB(t *testing.T) *sqlx.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
-	return db
+	return sqlx.NewDb(db, "sqlite")
 }
 
 func TestCreateClient(t *testing.T) {

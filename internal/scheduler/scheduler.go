@@ -10,6 +10,8 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/jmoiron/sqlx"
 )
 
 // CommandName represents the type of command.
@@ -85,7 +87,7 @@ type CommandHandler func(ctx context.Context, cmd *Command) error
 
 // Scheduler manages the command queue and scheduled tasks.
 type Scheduler struct {
-	db       *sql.DB
+	db       *sqlx.DB
 	handlers map[CommandName]CommandHandler
 
 	mu        sync.RWMutex
@@ -97,7 +99,7 @@ type Scheduler struct {
 }
 
 // New creates a new Scheduler.
-func New(db *sql.DB, maxConcurrent int) *Scheduler {
+func New(db *sqlx.DB, maxConcurrent int) *Scheduler {
 	if maxConcurrent <= 0 {
 		maxConcurrent = 3
 	}

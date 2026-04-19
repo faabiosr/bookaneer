@@ -3,13 +3,13 @@ package opds
 
 import (
 	"context"
-	"database/sql"
 	"encoding/xml"
 	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v5"
 )
 
@@ -57,11 +57,11 @@ type Link struct {
 
 // Server serves OPDS feeds.
 type Server struct {
-	db *sql.DB
+	db *sqlx.DB
 }
 
 // New creates a new OPDS Server.
-func New(db *sql.DB) *Server {
+func New(db *sqlx.DB) *Server {
 	return &Server{db: db}
 }
 
@@ -164,7 +164,7 @@ func (s *Server) AuthorBooks(c *echo.Context) error {
 	}
 
 	var authorName string
-	if err := s.db.QueryRowContext(ctx, "SELECT name FROM authors WHERE id = ?", authorID).Scan(&authorName); err != nil {
+	if err := s.db.GetContext(ctx, &authorName, "SELECT name FROM authors WHERE id = ?", authorID); err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "author not found")
 	}
 

@@ -2,7 +2,6 @@ package handler
 
 import (
 	"archive/zip"
-	"database/sql"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v5"
 	"github.com/woliveiras/bookaneer/internal/config"
 )
@@ -23,11 +23,11 @@ type SystemHandler struct {
 	version   string
 	buildTime string
 	cfg       *config.Config
-	db        *sql.DB
+	db        *sqlx.DB
 }
 
 // NewSystemHandler creates a new system handler.
-func NewSystemHandler(version, buildTime string, cfg *config.Config, db *sql.DB) *SystemHandler {
+func NewSystemHandler(version, buildTime string, cfg *config.Config, db *sqlx.DB) *SystemHandler {
 	return &SystemHandler{
 		version:   version,
 		buildTime: buildTime,
@@ -89,7 +89,7 @@ func (h *SystemHandler) Health(c *echo.Context) error {
 		overallStatus = "error"
 	} else {
 		var dbSize int64
-		_ = h.db.QueryRowContext(c.Request().Context(), "SELECT page_count * page_size FROM pragma_page_count, pragma_page_size").Scan(&dbSize)
+		_ = h.db.GetContext(c.Request().Context(), &dbSize, "SELECT page_count * page_size FROM pragma_page_count, pragma_page_size")
 		checks = append(checks, HealthCheck{Name: "database", Status: "ok", Message: fmt.Sprintf("size: %d bytes", dbSize)})
 	}
 

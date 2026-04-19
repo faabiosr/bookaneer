@@ -39,8 +39,8 @@ func TestAddBook_Success(t *testing.T) {
 	s, err := svc.Create(ctx, series.CreateSeriesInput{Title: "Test Series"})
 	require.NoError(t, err)
 
-	authorID := testutil.SeedAuthor(t, db, "Author")
-	bookID := testutil.SeedBook(t, db, authorID, "Book 1")
+	authorID := testutil.SeedAuthor(t, db,"Author")
+	bookID := testutil.SeedBook(t, db,authorID, "Book 1")
 
 	err = svc.AddBook(ctx, s.ID, series.AddBookInput{BookID: bookID, Position: "1"})
 	require.NoError(t, err)
@@ -72,8 +72,8 @@ func TestAddBook_AlreadyInSeries(t *testing.T) {
 	s, err := svc.Create(ctx, series.CreateSeriesInput{Title: "Series"})
 	require.NoError(t, err)
 
-	authorID := testutil.SeedAuthor(t, db, "Author")
-	bookID := testutil.SeedBook(t, db, authorID, "Book")
+	authorID := testutil.SeedAuthor(t, db,"Author")
+	bookID := testutil.SeedBook(t, db,authorID, "Book")
 
 	err = svc.AddBook(ctx, s.ID, series.AddBookInput{BookID: bookID, Position: "1"})
 	require.NoError(t, err)
@@ -90,8 +90,8 @@ func TestRemoveBook_Success(t *testing.T) {
 	s, err := svc.Create(ctx, series.CreateSeriesInput{Title: "Series"})
 	require.NoError(t, err)
 
-	authorID := testutil.SeedAuthor(t, db, "Author")
-	bookID := testutil.SeedBook(t, db, authorID, "Book")
+	authorID := testutil.SeedAuthor(t, db,"Author")
+	bookID := testutil.SeedBook(t, db,authorID, "Book")
 
 	err = svc.AddBook(ctx, s.ID, series.AddBookInput{BookID: bookID, Position: "1"})
 	require.NoError(t, err)
@@ -112,8 +112,8 @@ func TestUpdateBookPosition_Success(t *testing.T) {
 	s, err := svc.Create(ctx, series.CreateSeriesInput{Title: "Series"})
 	require.NoError(t, err)
 
-	authorID := testutil.SeedAuthor(t, db, "Author")
-	bookID := testutil.SeedBook(t, db, authorID, "Book")
+	authorID := testutil.SeedAuthor(t, db,"Author")
+	bookID := testutil.SeedBook(t, db,authorID, "Book")
 
 	err = svc.AddBook(ctx, s.ID, series.AddBookInput{BookID: bookID, Position: "1"})
 	require.NoError(t, err)
@@ -267,8 +267,8 @@ func TestRemoveBook_DBClosed(t *testing.T) {
 
 	s, err := svc.Create(ctx, series.CreateSeriesInput{Title: "Series DBClose"})
 	require.NoError(t, err)
-	authorID := testutil.SeedAuthor(t, db, "Author DBClose")
-	bookID := testutil.SeedBook(t, db, authorID, "Book DBClose")
+	authorID := testutil.SeedAuthor(t, db,"Author DBClose")
+	bookID := testutil.SeedBook(t, db,authorID, "Book DBClose")
 	err = svc.AddBook(ctx, s.ID, series.AddBookInput{BookID: bookID, Position: "1"})
 	require.NoError(t, err)
 
@@ -285,8 +285,8 @@ func TestUpdateBookPosition_DBClosed(t *testing.T) {
 
 	s, err := svc.Create(ctx, series.CreateSeriesInput{Title: "Series DBClose2"})
 	require.NoError(t, err)
-	authorID := testutil.SeedAuthor(t, db, "Author DBClose2")
-	bookID := testutil.SeedBook(t, db, authorID, "Book DBClose2")
+	authorID := testutil.SeedAuthor(t, db,"Author DBClose2")
+	bookID := testutil.SeedBook(t, db,authorID, "Book DBClose2")
 	err = svc.AddBook(ctx, s.ID, series.AddBookInput{BookID: bookID, Position: "1"})
 	require.NoError(t, err)
 

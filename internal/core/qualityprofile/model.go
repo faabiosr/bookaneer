@@ -4,9 +4,9 @@ import "encoding/json"
 
 // QualityProfile represents a quality profile for ebook downloads.
 type QualityProfile struct {
-	ID     int64         `json:"id"`
-	Name   string        `json:"name"`
-	Cutoff string        `json:"cutoff"`
+	ID     int64         `json:"id"     db:"id"`
+	Name   string        `json:"name"   db:"name"`
+	Cutoff string        `json:"cutoff" db:"cutoff"`
 	Items  []QualityItem `json:"items"`
 }
 

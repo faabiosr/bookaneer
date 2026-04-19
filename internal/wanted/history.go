@@ -61,10 +61,17 @@ func (s *Service) GetHistory(ctx context.Context, limit int, eventType string) (
 // recordHistory adds an entry to the history table.
 func (s *Service) recordHistory(ctx context.Context, bookID, authorID int64, eventType, sourceTitle, quality string, data map[string]any) {
 	dataJSON, _ := json.Marshal(data)
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.db.NamedExecContext(ctx, `
 		INSERT INTO history (book_id, author_id, event_type, source_title, quality, data)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, bookID, authorID, eventType, sourceTitle, quality, string(dataJSON))
+		VALUES (:book_id, :author_id, :event_type, :source_title, :quality, :data)
+	`, map[string]any{
+		"book_id":      bookID,
+		"author_id":    authorID,
+		"event_type":   eventType,
+		"source_title": sourceTitle,
+		"quality":      quality,
+		"data":         string(dataJSON),
+	})
 	if err != nil {
 		slog.Error("Failed to record history", "error", err)
 	}
@@ -72,7 +79,8 @@ func (s *Service) recordHistory(ctx context.Context, bookID, authorID int64, eve
 
 // GetBlocklist returns all blocklisted releases.
 func (s *Service) GetBlocklist(ctx context.Context) ([]BlocklistItem, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	var items []BlocklistItem
+	err := s.db.SelectContext(ctx, &items, `
 		SELECT bl.id, bl.book_id, bl.source_title, bl.quality, bl.reason, bl.date,
 		       COALESCE(b.title, '') as book_title,
 		       COALESCE(a.name, '') as author_name
@@ -81,29 +89,20 @@ func (s *Service) GetBlocklist(ctx context.Context) ([]BlocklistItem, error) {
 		LEFT JOIN authors a ON a.id = b.author_id
 		ORDER BY bl.date DESC
 	`)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-
-	var items []BlocklistItem
-	for rows.Next() {
-		var item BlocklistItem
-		if err := rows.Scan(&item.ID, &item.BookID, &item.SourceTitle, &item.Quality, &item.Reason, &item.Date, &item.BookTitle, &item.AuthorName); err != nil {
-			return nil, err
-		}
-		items = append(items, item)
-	}
-
-	return items, rows.Err()
+	return items, err
 }
 
 // AddToBlocklist adds a release to the blocklist.
 func (s *Service) AddToBlocklist(ctx context.Context, bookID int64, sourceTitle, quality, reason string) error {
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.db.NamedExecContext(ctx, `
 		INSERT INTO blocklist (book_id, source_title, quality, reason)
-		VALUES (?, ?, ?, ?)
-	`, bookID, sourceTitle, quality, reason)
+		VALUES (:book_id, :source_title, :quality, :reason)
+	`, map[string]any{
+		"book_id":      bookID,
+		"source_title": sourceTitle,
+		"quality":      quality,
+		"reason":       reason,
+	})
 	return err
 }
 
@@ -117,14 +116,17 @@ func (s *Service) RemoveFromBlocklist(ctx context.Context, id int64) error {
 // It removes the book file, blocklists the source, and tries the next available source.
 func (s *Service) ReportWrongContent(ctx context.Context, bookID int64) error {
 	// Get and remove the book file
-	var fileID int64
-	var filePath, format string
-	err := s.db.QueryRowContext(ctx, `
+	var bookFile struct {
+		ID     int64  `db:"id"`
+		Path   string `db:"path"`
+		Format string `db:"format"`
+	}
+	if err := s.db.GetContext(ctx, &bookFile, `
 		SELECT id, path, format FROM book_files WHERE book_id = ?
-	`, bookID).Scan(&fileID, &filePath, &format)
-	if err != nil {
+	`, bookID); err != nil {
 		return fmt.Errorf("no book file found for book %d: %w", bookID, err)
 	}
+	fileID, filePath, format := bookFile.ID, bookFile.Path, bookFile.Format
 
 	// Get book info for history
 	b, err := s.bookService.FindByID(ctx, bookID)
@@ -134,9 +136,9 @@ func (s *Service) ReportWrongContent(ctx context.Context, bookID int64) error {
 
 	// Find the download URL from queue or history for blocklisting
 	var sourceTitle string
-	err = s.db.QueryRowContext(ctx, `
+	err = s.db.GetContext(ctx, &sourceTitle, `
 		SELECT title FROM download_queue WHERE book_id = ? ORDER BY added_at DESC LIMIT 1
-	`, bookID).Scan(&sourceTitle)
+	`, bookID)
 	if err != nil {
 		sourceTitle = filePath // fallback to file path
 	}

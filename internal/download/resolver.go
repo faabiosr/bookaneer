@@ -64,7 +64,7 @@ func (s *Service) getEmbeddedDirectClient(ctx context.Context) (Client, *ClientC
 
 	// Get the first root folder BEFORE acquiring write lock
 	var rootPath string
-	err := s.db.QueryRowContext(ctx, `SELECT path FROM root_folders ORDER BY id LIMIT 1`).Scan(&rootPath)
+	err := s.db.GetContext(ctx, &rootPath, `SELECT path FROM root_folders ORDER BY id LIMIT 1`)
 	if err == sql.ErrNoRows {
 		return nil, nil, fmt.Errorf("no root folder configured: please add a root folder in Settings")
 	}
@@ -138,43 +138,25 @@ func (s *Service) getClientByTypes(ctx context.Context, clientTypes ...string) (
 
 	// placeholders contains only "?" — not user input — so fmt.Sprintf is safe here.
 	query := fmt.Sprintf(`
-		SELECT id, name, type, host, port, use_tls, username, password, api_key, 
-		       category, enabled, priority, nzb_folder, torrent_folder, watch_folder, download_dir
+		SELECT id, name, type, host, port, use_tls,
+		       COALESCE(username, '') as username, COALESCE(password, '') as password,
+		       COALESCE(api_key, '') as api_key, COALESCE(category, '') as category,
+		       enabled, priority,
+		       COALESCE(nzb_folder, '') as nzb_folder, COALESCE(torrent_folder, '') as torrent_folder,
+		       COALESCE(watch_folder, '') as watch_folder, COALESCE(download_dir, '') as download_dir
 		FROM download_clients
 		WHERE type IN (%s) AND enabled = 1
 		ORDER BY priority ASC
 		LIMIT 1
 	`, strings.Join(placeholders, ", "))
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
+	var cfg ClientConfig
+	if err := s.db.GetContext(ctx, &cfg, query, args...); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil, nil // No client configured
+		}
 		return nil, nil, fmt.Errorf("query clients: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
-
-	if !rows.Next() {
-		return nil, nil, nil // No client configured
-	}
-
-	var cfg ClientConfig
-	var enabled, useTLS int
-	var username, password, apiKey, category sql.NullString
-	var nzbFolder, torrentFolder, watchFolder, downloadDir sql.NullString
-	if err := rows.Scan(&cfg.ID, &cfg.Name, &cfg.Type, &cfg.Host, &cfg.Port, &useTLS,
-		&username, &password, &apiKey, &category, &enabled, &cfg.Priority,
-		&nzbFolder, &torrentFolder, &watchFolder, &downloadDir); err != nil {
-		return nil, nil, fmt.Errorf("scan client: %w", err)
-	}
-	cfg.Enabled = enabled == 1
-	cfg.UseTLS = useTLS == 1
-	cfg.Username = username.String
-	cfg.Password = password.String
-	cfg.APIKey = apiKey.String
-	cfg.Category = category.String
-	cfg.NzbFolder = nzbFolder.String
-	cfg.TorrentFolder = torrentFolder.String
-	cfg.WatchFolder = watchFolder.String
-	cfg.DownloadDir = downloadDir.String
 
 	client, err := s.getOrCreateClient(cfg)
 	if err != nil {
